@@ -3,11 +3,13 @@ package rtmpplugin
 import (
 	"bufio"
 	"errors"
+	"io"
+	"log"
+
+	"github.com/Monibuca/engine"
 	"github.com/Monibuca/engine/avformat"
 	"github.com/Monibuca/engine/pool"
 	"github.com/Monibuca/engine/util"
-	"io"
-	"log"
 )
 
 const (
@@ -45,7 +47,7 @@ const (
 
 func newConnectResponseMessageData(objectEncoding float64) (amfobj AMFObjects) {
 	amfobj = newAMFObjects()
-	amfobj["fmsVer"] = "monibuca/1.0"
+	amfobj["fmsVer"] = "monibuca/" + engine.Version
 	amfobj["capabilities"] = 31
 	amfobj["mode"] = 1
 	amfobj["Author"] = "dexter"
@@ -167,7 +169,7 @@ func (conn *NetConnection) SendMessage(message string, args interface{}) error {
 		if args != nil {
 			return errors.New(SEND_PING_REQUEST_MESSAGE + ", The parameter is nil")
 		}
-		return conn.writeMessage(RTMP_MSG_USER_CONTROL, &UserControlMessage{EventType: RTMP_USER_PING_REQUEST})
+		return conn.writeMessage(RTMP_MSG_USER_CONTROL, &PingRequestMessage{UserControlMessage{EventType: RTMP_USER_PING_REQUEST}, 0})
 	case SEND_PING_RESPONSE_MESSAGE:
 		if args != nil {
 			return errors.New(SEND_PING_RESPONSE_MESSAGE + ", The parameter is nil")
@@ -334,14 +336,12 @@ func (conn *NetConnection) SendMessage(message string, args interface{}) error {
 
 		return conn.sendAVMessage(video, false, true)
 	case SEND_VIDEO_MESSAGE:
-		{
-			video, ok := args.(*avformat.SendPacket)
-			if !ok {
-				errors.New(message + ", The parameter is AVPacket")
-			}
-
-			return conn.sendAVMessage(video, false, false)
+		video, ok := args.(*avformat.SendPacket)
+		if !ok {
+			errors.New(message + ", The parameter is AVPacket")
 		}
+
+		return conn.sendAVMessage(video, false, false)
 	}
 
 	return errors.New("send message no exist")
@@ -351,12 +351,12 @@ func (conn *NetConnection) SendMessage(message string, args interface{}) error {
 // 当块类型为4,8的时候,Chunk Message Header有一个字段TimeStamp Delta,记录与上一个Chunk的时间差值
 // 当块类型为0的时候,Chunk Message Header没有时间字段,与上一个Chunk时间值相同
 func (conn *NetConnection) sendAVMessage(av *avformat.SendPacket, isAudio bool, isFirst bool) error {
-	if conn.writeSeqNum > conn.bandwidth {
-		conn.totalWrite += conn.writeSeqNum
-		conn.writeSeqNum = 0
-		conn.SendMessage(SEND_ACK_MESSAGE, conn.totalWrite)
-		conn.SendMessage(SEND_PING_REQUEST_MESSAGE, nil)
-	}
+	// if conn.writeSeqNum > conn.bandwidth {
+	// 	conn.totalWrite += conn.writeSeqNum
+	// 	conn.writeSeqNum = 0
+	// 	conn.SendMessage(SEND_ACK_MESSAGE, conn.totalWrite)
+	// 	conn.SendMessage(SEND_PING_REQUEST_MESSAGE, nil)
+	// }
 
 	var err error
 	var mark []byte

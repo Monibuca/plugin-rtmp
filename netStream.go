@@ -3,12 +3,13 @@ package rtmpplugin
 import (
 	"bufio"
 	"fmt"
-	. "github.com/Monibuca/engine"
-	"github.com/Monibuca/engine/avformat"
 	"log"
 	"net"
 	"strings"
 	"time"
+
+	. "github.com/Monibuca/engine"
+	"github.com/Monibuca/engine/avformat"
 )
 
 type RTMP struct {
@@ -58,6 +59,9 @@ func processRtmp(conn net.Conn) {
 		if room != nil {
 			room.Cancel()
 		}
+		for _, s := range streams {
+			s.Close()
+		}
 	}()
 	var totalDuration uint32
 	nc := &NetConnection{
@@ -102,7 +106,7 @@ func processRtmp(conn net.Conn) {
 					streamPath := nc.appName + "/" + strings.Split(pm.PublishingName, "?")[0]
 					pub := new(RTMP)
 					if pub.Publish(streamPath, pub) {
-						pub.FirstScreen = make([]*avformat.AVPacket, 0)
+						//pub.FirstScreen = make([]*avformat.AVPacket, 0)
 						room = pub.Room
 						err = nc.SendMessage(SEND_STREAM_BEGIN_MESSAGE, nil)
 						err = nc.SendMessage(SEND_PUBLISH_START_MESSAGE, newPublishResponseMessageData(nc.streamID, NetStream_Publish_Start, Level_Status))
@@ -138,7 +142,7 @@ func processRtmp(conn net.Conn) {
 						case packet.Packet.Type == RTMP_MSG_AUDIO:
 							err = nc.SendMessage(SEND_AUDIO_MESSAGE, packet)
 						}
-						return nil
+						return
 					}}
 					stream.Type = "RTMP"
 					stream.ID = fmt.Sprintf("%s|%d", conn.RemoteAddr().String(), nc.streamID)
