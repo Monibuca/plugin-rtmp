@@ -97,6 +97,7 @@ func processRtmp(conn net.Conn) {
 				switch cmd.CommandName {
 				case "createStream":
 					nc.streamID = nc.nextStreamID(msg.ChunkStreamID)
+					log.Println("createStream:", nc.streamID)
 					err = nc.SendMessage(SEND_CREATE_STREAM_RESPONSE_MESSAGE, cmd.TransactionId)
 					if MayBeError(err) {
 						return
@@ -106,17 +107,22 @@ func processRtmp(conn net.Conn) {
 					streamPath := nc.appName + "/" + strings.Split(pm.PublishingName, "?")[0]
 					pub := new(RTMP)
 					if pub.Publish(streamPath, pub) {
-						//pub.FirstScreen = make([]*avformat.AVPacket, 0)
+						if config.FirstScreen {
+							pub.FirstScreen = make([]*avformat.AVPacket, 0)
+						}
 						room = pub.Room
 						err = nc.SendMessage(SEND_STREAM_BEGIN_MESSAGE, nil)
 						err = nc.SendMessage(SEND_PUBLISH_START_MESSAGE, newPublishResponseMessageData(nc.streamID, NetStream_Publish_Start, Level_Status))
 					} else {
-						err = nc.SendMessage(SEND_PUBLISH_RESPONSE_MESSAGE, newPublishResponseMessageData(nc.streamID, Level_Error, NetStream_Publish_BadName))
+						err = nc.SendMessage(SEND_PUBLISH_RESPONSE_MESSAGE, newPublishResponseMessageData(nc.streamID, NetStream_Publish_BadName, Level_Error))
 					}
 				case "play":
 					pm := msg.MsgData.(*PlayMessage)
 					streamPath := nc.appName + "/" + strings.Split(pm.StreamName, "?")[0]
 					nc.writeChunkSize = 512
+					var lastAudioTime uint32 = 0
+					var lastVideoTime uint32 = 0
+					// followAVCSequence := false
 					stream := &OutputStream{SendHandler: func(packet *avformat.SendPacket) (err error) {
 						switch true {
 						case packet.Packet.IsADTS:
@@ -135,11 +141,23 @@ func processRtmp(conn net.Conn) {
 							}
 						case packet.Packet.IsAVCSequence:
 							err = nc.SendMessage(SEND_FULL_VDIEO_MESSAGE, packet)
+							// followAVCSequence = true
 						case packet.Packet.Type == RTMP_MSG_VIDEO:
+							// if followAVCSequence {
+							// 	followAVCSequence = false
+							// 	err = nc.SendMessage(SEND_FULL_VDIEO_MESSAGE, packet)
+							// 	break
+							// }
+							t := packet.Timestamp - lastVideoTime
+							lastVideoTime = packet.Timestamp
+							packet.Timestamp = t
 							err = nc.SendMessage(SEND_VIDEO_MESSAGE, packet)
 						case packet.Packet.IsAACSequence:
 							err = nc.SendMessage(SEND_FULL_AUDIO_MESSAGE, packet)
 						case packet.Packet.Type == RTMP_MSG_AUDIO:
+							t := packet.Timestamp - lastAudioTime
+							lastAudioTime = packet.Timestamp
+							packet.Timestamp = t
 							err = nc.SendMessage(SEND_AUDIO_MESSAGE, packet)
 						}
 						return

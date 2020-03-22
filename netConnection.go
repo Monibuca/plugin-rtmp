@@ -243,12 +243,11 @@ func (conn *NetConnection) SendMessage(message string, args interface{}) error {
 		m.StreamID = streamID
 		return conn.writeMessage(RTMP_MSG_AMF0_COMMAND, m)
 	case SEND_CONNECT_RESPONSE_MESSAGE:
-		data := newConnectResponseMessageData(args.(float64))
 		//if !ok {
 		//	errors.New(SEND_CONNECT_RESPONSE_MESSAGE + ", The parameter is AMFObjects(map[string]interface{})")
 		//}
 
-		//pro := newAMFObjects()
+		pro := newAMFObjects()
 		info := newAMFObjects()
 
 		//for i, v := range data {
@@ -257,10 +256,19 @@ func (conn *NetConnection) SendMessage(message string, args interface{}) error {
 		//		pro[i] = v
 		//	}
 		//}
+
+		pro["fmsVer"] = "monibuca/" + engine.Version
+		pro["capabilities"] = 31
+		pro["mode"] = 1
+		pro["Author"] = "dexter"
+
+		info["level"] = Level_Status
+		info["code"] = NetConnection_Connect_Success
+		info["objectEncoding"] = args.(float64)
 		m := new(ResponseConnectMessage)
 		m.CommandName = Response_Result
 		m.TransactionId = 1
-		m.Properties = data
+		m.Properties = pro
 		m.Infomation = info
 		return conn.writeMessage(RTMP_MSG_AMF0_COMMAND, m)
 	case SEND_CONNECT_MESSAGE:
@@ -351,18 +359,17 @@ func (conn *NetConnection) SendMessage(message string, args interface{}) error {
 // 当块类型为4,8的时候,Chunk Message Header有一个字段TimeStamp Delta,记录与上一个Chunk的时间差值
 // 当块类型为0的时候,Chunk Message Header没有时间字段,与上一个Chunk时间值相同
 func (conn *NetConnection) sendAVMessage(av *avformat.SendPacket, isAudio bool, isFirst bool) error {
-	// if conn.writeSeqNum > conn.bandwidth {
-	// 	conn.totalWrite += conn.writeSeqNum
-	// 	conn.writeSeqNum = 0
-	// 	conn.SendMessage(SEND_ACK_MESSAGE, conn.totalWrite)
-	// 	conn.SendMessage(SEND_PING_REQUEST_MESSAGE, nil)
-	// }
+	if conn.writeSeqNum > conn.bandwidth {
+		conn.totalWrite += conn.writeSeqNum
+		conn.writeSeqNum = 0
+		conn.SendMessage(SEND_ACK_MESSAGE, conn.totalWrite)
+		conn.SendMessage(SEND_PING_REQUEST_MESSAGE, nil)
+	}
 
 	var err error
 	var mark []byte
 	var need []byte
 	var head *ChunkHeader
-
 	if isAudio {
 		head = newRtmpHeader(RTMP_CSID_AUDIO, av.Timestamp, uint32(len(av.Packet.Payload)), RTMP_MSG_AUDIO, conn.streamID, 0)
 	} else {
@@ -376,19 +383,18 @@ func (conn *NetConnection) sendAVMessage(av *avformat.SendPacket, isAudio bool, 
 		mark, need, err = encodeChunk12(head, av.Packet.Payload, conn.writeChunkSize)
 	} else {
 		mark, need, err = encodeChunk8(head, av.Packet.Payload, conn.writeChunkSize)
+
 	}
 
 	if err != nil {
 		return err
 	}
 
-	_, err = conn.Write(mark)
-	if err != nil {
+	if _, err = conn.Write(mark); err != nil {
 		return err
 	}
 
-	err = conn.Flush()
-	if err != nil {
+	if err = conn.Flush(); err != nil {
 		return err
 	}
 
@@ -396,18 +402,15 @@ func (conn *NetConnection) sendAVMessage(av *avformat.SendPacket, isAudio bool, 
 
 	// 如果音视频数据太大,一次发送不完,那么在这里进行分割(data + Chunk Basic Header(1))
 	for need != nil && len(need) > 0 {
-		mark, need, err = encodeChunk1(head, need, conn.writeChunkSize)
-		if err != nil {
+		if mark, need, err = encodeChunk1(head, need, conn.writeChunkSize); err != nil {
 			return err
 		}
 
-		_, err = conn.Write(mark)
-		if err != nil {
+		if _, err = conn.Write(mark); err != nil {
 			return err
 		}
 
-		err = conn.Flush()
-		if err != nil {
+		if err = conn.Flush(); err != nil {
 			return err
 		}
 
@@ -475,6 +478,7 @@ func (conn *NetConnection) readChunk() (msg *Chunk, err error) {
 	if markRead == msgLen {
 
 		msg := chunkMsgPool.Get().(*Chunk)
+		msg.MsgData = nil
 		msg.Body = currentBody
 		msg.ChunkHeader = chunkHead.Clone()
 		GetRtmpMessage(msg)

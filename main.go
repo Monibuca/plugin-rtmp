@@ -6,7 +6,10 @@ import (
 	. "github.com/Monibuca/engine"
 )
 
-var config = new(ListenerConfig)
+var config = new(struct {
+	ListenAddr  string
+	FirstScreen bool
+})
 
 func init() {
 	InstallPlugin(&PluginConfig{

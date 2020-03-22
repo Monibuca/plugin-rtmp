@@ -2,9 +2,10 @@ package rtmpplugin
 
 import (
 	"bytes"
-	"github.com/Monibuca/engine/util"
 	"log"
 	"sync"
+
+	"github.com/Monibuca/engine/util"
 )
 
 const (
@@ -78,6 +79,9 @@ var (
 func newChunkHeader(messageType byte) *ChunkHeader {
 	head := rtmpHeaderPool.Get().(*ChunkHeader)
 	head.ChunkStreamID = RTMP_CSID_CONTROL
+	if messageType == RTMP_MSG_AMF0_COMMAND {
+		head.ChunkStreamID = RTMP_CSID_COMMAND
+	}
 	head.Timestamp = 0
 	head.MessageTypeID = messageType
 	head.MessageStreamID = 0
