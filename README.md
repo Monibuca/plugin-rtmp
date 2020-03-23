@@ -9,9 +9,12 @@ the rtmp protocol plugin for monibuca
 RTMP
 
 ## 配置
-目前仅有的配置是监听的端口号
 
 ```toml
-[Plugins.RTMP]
+[RTMP]
+FirstScreen = false
 ListenAddr = ":1935"
 ```
+
+- FirstScreen 代表是否打开首屏秒开
+- ListenAddr 代表监听的端口号
