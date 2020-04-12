@@ -1,8 +1,9 @@
-package rtmpplugin
+package rtmp
 
 import (
 	"bytes"
 	"errors"
+
 	"github.com/Monibuca/engine/pool"
 	"github.com/Monibuca/engine/util"
 )

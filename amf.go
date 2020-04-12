@@ -1,14 +1,15 @@
-package rtmpplugin
+package rtmp
 
 import (
 	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"github.com/Monibuca/engine/pool"
-	"github.com/Monibuca/engine/util"
 	"log"
 	"reflect"
+
+	"github.com/Monibuca/engine/pool"
+	"github.com/Monibuca/engine/util"
 )
 
 // Action Message Format -- AMF 0

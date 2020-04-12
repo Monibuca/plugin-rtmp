@@ -1,8 +1,8 @@
-module github.com/Monibuca/rtmpplugin
+module github.com/Monibuca/plugin-rtmp
 
 go 1.13
 
 require (
-	github.com/Monibuca/engine v1.1.2
-	github.com/funny/utest v0.0.0-20161029064919-43870a374500 // indirect
+	github.com/Monibuca/engine v1.2.0
+	github.com/logrusorgru/aurora v0.0.0-20200102142835-e9ef32dff381
 )

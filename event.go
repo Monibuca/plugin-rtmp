@@ -1,4 +1,4 @@
-package rtmpplugin
+package rtmp
 
 // http://help.adobe.com/zh_CN/AIR/1.5/jslr/flash/events/NetStatusEvent.html
 

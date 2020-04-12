@@ -1,9 +1,10 @@
-package rtmpplugin
+package rtmp
 
 import (
 	"log"
 
 	. "github.com/Monibuca/engine"
+	. "github.com/logrusorgru/aurora"
 )
 
 var config = new(struct {
@@ -13,14 +14,13 @@ var config = new(struct {
 
 func init() {
 	InstallPlugin(&PluginConfig{
-		Name:    "RTMP",
-		Type:    PLUGIN_SUBSCRIBER | PLUGIN_PUBLISHER,
-		Config:  config,
-		Version: "1.0.0",
-		Run:     run,
+		Name:   "RTMP",
+		Type:   PLUGIN_SUBSCRIBER | PLUGIN_PUBLISHER,
+		Config: config,
+		Run:    run,
 	})
 }
 func run() {
-	log.Printf("server rtmp start at %s", config.ListenAddr)
+	Print(Green("server rtmp start at"), BrightBlue(config.ListenAddr))
 	log.Fatal(ListenRtmp(config.ListenAddr))
 }

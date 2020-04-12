@@ -1,4 +1,4 @@
-package rtmpplugin
+package rtmp
 
 import (
 	"bytes"
