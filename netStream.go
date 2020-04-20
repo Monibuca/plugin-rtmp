@@ -107,10 +107,11 @@ func processRtmp(conn net.Conn) {
 					streamPath := nc.appName + "/" + strings.Split(pm.PublishingName, "?")[0]
 					pub := new(RTMP)
 					if pub.Publish(streamPath, pub) {
-						if config.FirstScreen {
-							pub.FirstScreen = make([]*avformat.AVPacket, 0)
-						}
+						// if config.FirstScreen {
+						// 	pub.FirstScreen = make([]*avformat.AVPacket, 0)
+						// }
 						room = pub.Room
+						room.AVCircle.Lock()
 						err = nc.SendMessage(SEND_STREAM_BEGIN_MESSAGE, nil)
 						err = nc.SendMessage(SEND_PUBLISH_START_MESSAGE, newPublishResponseMessageData(nc.streamID, NetStream_Publish_Start, Level_Status))
 					} else {
@@ -183,25 +184,21 @@ func processRtmp(conn net.Conn) {
 					}
 				}
 			case RTMP_MSG_AUDIO:
-				pkt := avformat.NewAVPacket(RTMP_MSG_AUDIO)
+				// pkt := avformat.NewAVPacket(RTMP_MSG_AUDIO)
 				if msg.Timestamp == 0xffffff {
 					totalDuration += msg.ExtendTimestamp
 				} else {
 					totalDuration += msg.Timestamp // 绝对时间戳
 				}
-				pkt.Timestamp = totalDuration
-				pkt.Payload = msg.Body
-				room.PushAudio(pkt)
+				room.PushAudio(totalDuration, msg.Body)
 			case RTMP_MSG_VIDEO:
-				pkt := avformat.NewAVPacket(RTMP_MSG_VIDEO)
+				// pkt := avformat.NewAVPacket(RTMP_MSG_VIDEO)
 				if msg.Timestamp == 0xffffff {
 					totalDuration += msg.ExtendTimestamp
 				} else {
 					totalDuration += msg.Timestamp // 绝对时间戳
 				}
-				pkt.Timestamp = totalDuration
-				pkt.Payload = msg.Body
-				room.PushVideo(pkt)
+				room.PushVideo(totalDuration, msg.Body)
 			}
 			msg.Recycle()
 		} else {
