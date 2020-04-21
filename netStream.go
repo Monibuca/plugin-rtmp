@@ -107,9 +107,6 @@ func processRtmp(conn net.Conn) {
 					streamPath := nc.appName + "/" + strings.Split(pm.PublishingName, "?")[0]
 					pub := new(RTMP)
 					if pub.Publish(streamPath, pub) {
-						// if config.FirstScreen {
-						// 	pub.FirstScreen = make([]*avformat.AVPacket, 0)
-						// }
 						room = pub.Room
 						err = nc.SendMessage(SEND_STREAM_BEGIN_MESSAGE, nil)
 						err = nc.SendMessage(SEND_PUBLISH_START_MESSAGE, newPublishResponseMessageData(nc.streamID, NetStream_Publish_Start, Level_Status))
@@ -123,7 +120,7 @@ func processRtmp(conn net.Conn) {
 					var lastAudioTime uint32 = 0
 					var lastVideoTime uint32 = 0
 					// followAVCSequence := false
-					stream := &OutputStream{SendHandler: func(timestamp uint32, packet *avformat.AVPacket) (err error) {
+					stream := &OutputStream{SendHandler: func(packet *avformat.SendPacket) (err error) {
 						switch true {
 						// case packet.IsADTS:
 						// 	tagPacket := avformat.NewAVPacket(RTMP_MSG_AUDIO)
@@ -140,7 +137,7 @@ func processRtmp(conn net.Conn) {
 						// 		err = nc.SendMessage(SEND_AUDIO_MESSAGE, contentPacket)
 						// 	}
 						case packet.IsAVCSequence:
-							err = nc.SendMessage(SEND_FULL_VDIEO_MESSAGE, avformat.NewSendPacket(packet, timestamp))
+							err = nc.SendMessage(SEND_FULL_VDIEO_MESSAGE, packet)
 							// followAVCSequence = true
 						case packet.Type == RTMP_MSG_VIDEO:
 							// if followAVCSequence {
@@ -150,15 +147,15 @@ func processRtmp(conn net.Conn) {
 							// }
 							t := packet.Timestamp - lastVideoTime
 							lastVideoTime = packet.Timestamp
-							//packet.Timestamp = t
-							err = nc.SendMessage(SEND_VIDEO_MESSAGE, avformat.NewSendPacket(packet, t))
+							packet.Timestamp = t
+							err = nc.SendMessage(SEND_VIDEO_MESSAGE, packet)
 						case packet.IsAACSequence:
-							err = nc.SendMessage(SEND_FULL_AUDIO_MESSAGE, avformat.NewSendPacket(packet, timestamp))
+							err = nc.SendMessage(SEND_FULL_AUDIO_MESSAGE, packet)
 						case packet.Type == RTMP_MSG_AUDIO:
 							t := packet.Timestamp - lastAudioTime
 							lastAudioTime = packet.Timestamp
-							//packet.Timestamp = t
-							err = nc.SendMessage(SEND_AUDIO_MESSAGE, avformat.NewSendPacket(packet, t))
+							packet.Timestamp = t
+							err = nc.SendMessage(SEND_AUDIO_MESSAGE, packet)
 						}
 						return
 					}}

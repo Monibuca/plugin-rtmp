@@ -371,18 +371,18 @@ func (conn *NetConnection) sendAVMessage(av *avformat.SendPacket, isAudio bool, 
 	var need []byte
 	var head *ChunkHeader
 	if isAudio {
-		head = newRtmpHeader(RTMP_CSID_AUDIO, av.Timestamp, uint32(len(av.Packet.Payload)), RTMP_MSG_AUDIO, conn.streamID, 0)
+		head = newRtmpHeader(RTMP_CSID_AUDIO, av.Timestamp, uint32(len(av.Payload)), RTMP_MSG_AUDIO, conn.streamID, 0)
 	} else {
-		head = newRtmpHeader(RTMP_CSID_VIDEO, av.Timestamp, uint32(len(av.Packet.Payload)), RTMP_MSG_VIDEO, conn.streamID, 0)
+		head = newRtmpHeader(RTMP_CSID_VIDEO, av.Timestamp, uint32(len(av.Payload)), RTMP_MSG_VIDEO, conn.streamID, 0)
 	}
 
 	// 第一次是发送关键帧,需要完整的消息头(Chunk Basic Header(1) + Chunk Message Header(11) + Extended Timestamp(4)(可能会要包括))
 	// 后面开始,就是直接发送音视频数据,那么直接发送,不需要完整的块(Chunk Basic Header(1) + Chunk Message Header(7))
 	// 当Chunk Type为0时(即Chunk12),
 	if isFirst {
-		mark, need, err = encodeChunk12(head, av.Packet.Payload, conn.writeChunkSize)
+		mark, need, err = encodeChunk12(head, av.Payload, conn.writeChunkSize)
 	} else {
-		mark, need, err = encodeChunk8(head, av.Packet.Payload, conn.writeChunkSize)
+		mark, need, err = encodeChunk8(head, av.Payload, conn.writeChunkSize)
 
 	}
 

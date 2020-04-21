@@ -8,8 +8,7 @@ import (
 )
 
 var config = new(struct {
-	ListenAddr  string
-	FirstScreen bool
+	ListenAddr string
 })
 
 func init() {
