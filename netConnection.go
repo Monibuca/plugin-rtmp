@@ -367,7 +367,6 @@ func (conn *NetConnection) sendAVMessage(av *avformat.SendPacket, isAudio bool, 
 	}
 
 	var err error
-	var mark []byte
 	var need []byte
 	var head *ChunkHeader
 	if isAudio {
@@ -380,41 +379,26 @@ func (conn *NetConnection) sendAVMessage(av *avformat.SendPacket, isAudio bool, 
 	// 后面开始,就是直接发送音视频数据,那么直接发送,不需要完整的块(Chunk Basic Header(1) + Chunk Message Header(7))
 	// 当Chunk Type为0时(即Chunk12),
 	if isFirst {
-		mark, need, err = encodeChunk12(head, av.Payload, conn.writeChunkSize)
+		need, err = conn.encodeChunk12(head, av.Payload, conn.writeChunkSize)
 	} else {
-		mark, need, err = encodeChunk8(head, av.Payload, conn.writeChunkSize)
+		need, err = conn.encodeChunk8(head, av.Payload, conn.writeChunkSize)
 
 	}
-
 	if err != nil {
 		return err
 	}
-
-	if _, err = conn.Write(mark); err != nil {
-		return err
-	}
-
 	if err = conn.Flush(); err != nil {
 		return err
 	}
 
-	conn.writeSeqNum += uint32(len(mark))
-
 	// 如果音视频数据太大,一次发送不完,那么在这里进行分割(data + Chunk Basic Header(1))
 	for need != nil && len(need) > 0 {
-		if mark, need, err = encodeChunk1(head, need, conn.writeChunkSize); err != nil {
+		if need, err = conn.encodeChunk1(head, need, conn.writeChunkSize); err != nil {
 			return err
 		}
-
-		if _, err = conn.Write(mark); err != nil {
-			return err
-		}
-
 		if err = conn.Flush(); err != nil {
 			return err
 		}
-
-		conn.writeSeqNum += uint32(len(mark))
 	}
 
 	return nil
@@ -695,41 +679,20 @@ func (conn *NetConnection) writeMessage(t byte, msg RtmpMessage) error {
 		conn.SendMessage(SEND_PING_REQUEST_MESSAGE, nil)
 	}
 
-	mark, need, err := encodeChunk12(head, body, conn.writeChunkSize)
+	need, err := conn.encodeChunk12(head, body, conn.writeChunkSize)
 	if err != nil {
 		return err
 	}
-
-	_, err = conn.Write(mark)
-	if err != nil {
+	if err = conn.Flush(); err != nil {
 		return err
 	}
-
-	err = conn.Flush()
-	if err != nil {
-		return err
-	}
-
-	conn.writeSeqNum += uint32(len(mark))
-
 	for need != nil && len(need) > 0 {
-		mark, need, err = encodeChunk1(head, need, conn.writeChunkSize)
-		if err != nil {
+		if need, err = conn.encodeChunk1(head, need, conn.writeChunkSize); err != nil {
 			return err
 		}
-
-		_, err = conn.Write(mark)
-		if err != nil {
+		if err = conn.Flush(); err != nil {
 			return err
 		}
-
-		err = conn.Flush()
-		if err != nil {
-			return err
-		}
-
-		conn.writeSeqNum += uint32(len(mark))
 	}
-
 	return nil
 }

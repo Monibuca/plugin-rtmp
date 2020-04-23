@@ -1,7 +1,6 @@
 package rtmp
 
 import (
-	"bytes"
 	"errors"
 
 	"github.com/Monibuca/engine/pool"
@@ -83,121 +82,98 @@ type ChunkExtendedTimestamp struct {
 // 8  -> ChunkBasicHeader(1) + ChunkMessageHeader(7)
 // 12 -> ChunkBasicHeader(1) + ChunkMessageHeader(11)
 
-func encodeChunk12(head *ChunkHeader, payload []byte, size int) (mark []byte, need []byte, err error) {
+func (nc *NetConnection) encodeChunk12(head *ChunkHeader, payload []byte, size int) (need []byte, err error) {
 	if size > RTMP_MAX_CHUNK_SIZE || payload == nil || len(payload) == 0 {
-		return nil, nil, errors.New("chunk error")
+		return nil, errors.New("chunk error")
 	}
-
-	buf := new(bytes.Buffer)
-
-	chunkBasicHead := byte(RTMP_CHUNK_HEAD_12 + head.ChunkBasicHeader.ChunkStreamID)
-	buf.WriteByte(chunkBasicHead)
-
-	b := pool.GetSlice(3)
-	util.BigEndian.PutUint24(b, head.ChunkMessageHeader.Timestamp)
-	buf.Write(b)
-
-	util.BigEndian.PutUint24(b, head.ChunkMessageHeader.MessageLength)
-	buf.Write(b)
-
-	buf.WriteByte(head.ChunkMessageHeader.MessageTypeID)
+	b := pool.GetSlice(12)
+	//chunkBasicHead
+	b[0] = byte(RTMP_CHUNK_HEAD_12 + head.ChunkBasicHeader.ChunkStreamID)
+	util.BigEndian.PutUint24(b[1:], head.ChunkMessageHeader.Timestamp)
+	util.BigEndian.PutUint24(b[4:], head.ChunkMessageHeader.MessageLength)
+	b[7] = head.ChunkMessageHeader.MessageTypeID
+	util.LittleEndian.PutUint32(b[8:], uint32(head.ChunkMessageHeader.MessageStreamID))
+	nc.Write(b)
 	pool.RecycleSlice(b)
-	b = pool.GetSlice(4)
-	util.LittleEndian.PutUint32(b, uint32(head.ChunkMessageHeader.MessageStreamID))
-	buf.Write(b)
-
+	nc.writeSeqNum += 12
 	if head.ChunkMessageHeader.Timestamp == 0xffffff {
+		b := pool.GetSlice(4)
 		util.LittleEndian.PutUint32(b, head.ChunkExtendedTimestamp.ExtendTimestamp)
-		buf.Write(b)
+		nc.Write(b)
+		pool.RecycleSlice(b)
+		nc.writeSeqNum += 4
 	}
-	pool.RecycleSlice(b)
 	if len(payload) > size {
-		buf.Write(payload[0:size])
+		nc.Write(payload[0:size])
+		nc.writeSeqNum += uint32(size)
 		need = payload[size:]
 	} else {
-		buf.Write(payload)
+		nc.Write(payload)
+		nc.writeSeqNum += uint32(len(payload))
 	}
-
-	mark = buf.Bytes()
-
 	return
 }
 
-func encodeChunk8(head *ChunkHeader, payload []byte, size int) (mark []byte, need []byte, err error) {
+func (nc *NetConnection) encodeChunk8(head *ChunkHeader, payload []byte, size int) (need []byte, err error) {
 	if size > RTMP_MAX_CHUNK_SIZE || payload == nil || len(payload) == 0 {
-		return nil, nil, errors.New("chunk error")
+		return nil, errors.New("chunk error")
 	}
-
-	buf := new(bytes.Buffer)
-
-	chunkBasicHead := byte(RTMP_CHUNK_HEAD_8 + head.ChunkBasicHeader.ChunkStreamID)
-	buf.WriteByte(chunkBasicHead)
-
-	b := pool.GetSlice(3)
-	util.BigEndian.PutUint24(b, head.ChunkMessageHeader.Timestamp)
-	buf.Write(b)
-
-	util.BigEndian.PutUint24(b, head.ChunkMessageHeader.MessageLength)
-	buf.Write(b)
+	b := pool.GetSlice(8)
+	//chunkBasicHead
+	b[0] = byte(RTMP_CHUNK_HEAD_8 + head.ChunkBasicHeader.ChunkStreamID)
+	util.BigEndian.PutUint24(b[1:], head.ChunkMessageHeader.Timestamp)
+	util.BigEndian.PutUint24(b[4:], head.ChunkMessageHeader.MessageLength)
+	b[7] = head.ChunkMessageHeader.MessageTypeID
+	nc.Write(b)
 	pool.RecycleSlice(b)
-	buf.WriteByte(head.ChunkMessageHeader.MessageTypeID)
-
+	nc.writeSeqNum += 8
 	if len(payload) > size {
-		buf.Write(payload[0:size])
+		nc.Write(payload[0:size])
+		nc.writeSeqNum += uint32(size)
 		need = payload[size:]
 	} else {
-		buf.Write(payload)
+		nc.Write(payload)
+		nc.writeSeqNum += uint32(len(payload))
 	}
-
-	mark = buf.Bytes()
-
 	return
 }
 
-func encodeChunk4(head *ChunkHeader, payload []byte, size int) (mark []byte, need []byte, err error) {
+func (nc *NetConnection) encodeChunk4(head *ChunkHeader, payload []byte, size int) (need []byte, err error) {
 	if size > RTMP_MAX_CHUNK_SIZE || payload == nil || len(payload) == 0 {
-		return nil, nil, errors.New("chunk error")
+		return nil, errors.New("chunk error")
 	}
-
-	buf := new(bytes.Buffer)
-
-	chunkBasicHead := byte(RTMP_CHUNK_HEAD_4 + head.ChunkBasicHeader.ChunkStreamID)
-	buf.WriteByte(chunkBasicHead)
-
-	b := pool.GetSlice(3)
-	util.BigEndian.PutUint24(b, head.ChunkMessageHeader.Timestamp)
-	buf.Write(b)
+	b := pool.GetSlice(4)
+	//chunkBasicHead
+	b[0] = byte(RTMP_CHUNK_HEAD_4 + head.ChunkBasicHeader.ChunkStreamID)
+	util.BigEndian.PutUint24(b[1:], head.ChunkMessageHeader.Timestamp)
+	nc.Write(b)
 	pool.RecycleSlice(b)
+	nc.writeSeqNum += 4
 	if len(payload) > size {
-		buf.Write(payload[0:size])
+		nc.Write(payload[0:size])
+		nc.writeSeqNum += uint32(size)
 		need = payload[size:]
 	} else {
-		buf.Write(payload)
+		nc.Write(payload)
+		nc.writeSeqNum += uint32(len(payload))
 	}
-
-	mark = buf.Bytes()
-
 	return
 }
 
-func encodeChunk1(head *ChunkHeader, payload []byte, size int) (mark []byte, need []byte, err error) {
+func (nc *NetConnection) encodeChunk1(head *ChunkHeader, payload []byte, size int) (need []byte, err error) {
 	if size > RTMP_MAX_CHUNK_SIZE || payload == nil || len(payload) == 0 {
-		return nil, nil, errors.New("chunk error")
+		return nil, errors.New("chunk error")
 	}
-
-	buf := new(bytes.Buffer)
-
 	chunkBasicHead := byte(RTMP_CHUNK_HEAD_1 + head.ChunkBasicHeader.ChunkStreamID)
-	buf.WriteByte(chunkBasicHead)
-
+	nc.WriteByte(chunkBasicHead)
+	nc.writeSeqNum++
 	if len(payload) > size {
-		buf.Write(payload[0:size])
+		nc.Write(payload[0:size])
+		nc.writeSeqNum += uint32(size)
 		need = payload[size:]
 	} else {
-		buf.Write(payload)
+		nc.Write(payload)
+		nc.writeSeqNum += uint32(len(payload))
 	}
-
-	mark = buf.Bytes()
-
 	return
 }

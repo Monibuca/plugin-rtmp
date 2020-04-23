@@ -26,6 +26,7 @@ func ListenRtmp(addr string) error {
 	var tempDelay time.Duration
 	for {
 		conn, err := listener.Accept()
+		conn.(*net.TCPConn).SetNoDelay(false)
 		if err != nil {
 			if ne, ok := err.(net.Error); ok && ne.Temporary() {
 				if tempDelay == 0 {
