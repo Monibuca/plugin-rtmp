@@ -7,15 +7,16 @@ import (
 	. "github.com/logrusorgru/aurora"
 )
 
-var config = new(struct {
+var config = struct {
 	ListenAddr string
-})
+	ChunkSize  int
+}{":1935", 512}
 
 func init() {
 	InstallPlugin(&PluginConfig{
 		Name:   "RTMP",
 		Type:   PLUGIN_SUBSCRIBER | PLUGIN_PUBLISHER,
-		Config: config,
+		Config: &config,
 		Run:    run,
 	})
 }

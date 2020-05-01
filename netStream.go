@@ -53,12 +53,12 @@ func ListenRtmp(addr string) error {
 var gstreamid = uint32(64)
 
 func processRtmp(conn net.Conn) {
-	var room *Room
-	streams := make(map[uint32]*OutputStream)
+	var stream *Stream
+	streams := make(map[uint32]*Subscriber)
 	defer func() {
 		conn.Close()
-		if room != nil {
-			room.Cancel()
+		if stream != nil {
+			stream.Cancel()
 		}
 		for _, s := range streams {
 			s.Close()
@@ -106,9 +106,9 @@ func processRtmp(conn net.Conn) {
 				case "publish":
 					pm := msg.MsgData.(*PublishMessage)
 					streamPath := nc.appName + "/" + strings.Split(pm.PublishingName, "?")[0]
-					pub := new(RTMP)
-					if pub.Publish(streamPath, pub) {
-						room = pub.Room
+					if pub := new(RTMP); pub.Publish(streamPath) {
+						pub.Type = "RTMP"
+						stream = pub.Stream
 						err = nc.SendMessage(SEND_STREAM_BEGIN_MESSAGE, nil)
 						err = nc.SendMessage(SEND_PUBLISH_START_MESSAGE, newPublishResponseMessageData(nc.streamID, NetStream_Publish_Start, Level_Status))
 					} else {
@@ -117,11 +117,11 @@ func processRtmp(conn net.Conn) {
 				case "play":
 					pm := msg.MsgData.(*PlayMessage)
 					streamPath := nc.appName + "/" + strings.Split(pm.StreamName, "?")[0]
-					nc.writeChunkSize = 512
+					nc.writeChunkSize = config.ChunkSize
 					var lastAudioTime uint32 = 0
 					var lastVideoTime uint32 = 0
 					// followAVCSequence := false
-					stream := &OutputStream{SendHandler: func(packet *avformat.SendPacket) (err error) {
+					stream := &Subscriber{OnData: func(packet *avformat.SendPacket) (err error) {
 						switch true {
 						// case packet.IsADTS:
 						// 	tagPacket := avformat.NewAVPacket(RTMP_MSG_AUDIO)
@@ -137,26 +137,24 @@ func processRtmp(conn net.Conn) {
 						// 		copy(contentPacket.Payload[2:], packet.Payload[ADTSLength:])
 						// 		err = nc.SendMessage(SEND_AUDIO_MESSAGE, contentPacket)
 						// 	}
-						case packet.IsAVCSequence:
-							err = nc.SendMessage(SEND_FULL_VDIEO_MESSAGE, packet)
-							// followAVCSequence = true
 						case packet.Type == RTMP_MSG_VIDEO:
-							// if followAVCSequence {
-							// 	followAVCSequence = false
-							// 	err = nc.SendMessage(SEND_FULL_VDIEO_MESSAGE, packet)
-							// 	break
-							// }
-							t := packet.Timestamp - lastVideoTime
-							lastVideoTime = packet.Timestamp
-							packet.Timestamp = t
-							err = nc.SendMessage(SEND_VIDEO_MESSAGE, packet)
-						case packet.IsAACSequence:
-							err = nc.SendMessage(SEND_FULL_AUDIO_MESSAGE, packet)
+							if packet.IsSequence {
+								err = nc.SendMessage(SEND_FULL_VDIEO_MESSAGE, packet)
+							} else {
+								t := packet.Timestamp - lastVideoTime
+								lastVideoTime = packet.Timestamp
+								packet.Timestamp = t
+								err = nc.SendMessage(SEND_VIDEO_MESSAGE, packet)
+							}
 						case packet.Type == RTMP_MSG_AUDIO:
-							t := packet.Timestamp - lastAudioTime
-							lastAudioTime = packet.Timestamp
-							packet.Timestamp = t
-							err = nc.SendMessage(SEND_AUDIO_MESSAGE, packet)
+							if packet.IsSequence {
+								err = nc.SendMessage(SEND_FULL_AUDIO_MESSAGE, packet)
+							} else {
+								t := packet.Timestamp - lastAudioTime
+								lastAudioTime = packet.Timestamp
+								packet.Timestamp = t
+								err = nc.SendMessage(SEND_AUDIO_MESSAGE, packet)
+							}
 						}
 						return
 					}}
@@ -187,7 +185,7 @@ func processRtmp(conn net.Conn) {
 				} else {
 					totalDuration += msg.Timestamp // 绝对时间戳
 				}
-				room.PushAudio(totalDuration, msg.Body)
+				Stream.PushAudio(totalDuration, msg.Body)
 			case RTMP_MSG_VIDEO:
 				// pkt := avformat.NewAVPacket(RTMP_MSG_VIDEO)
 				if msg.Timestamp == 0xffffff {
@@ -195,7 +193,7 @@ func processRtmp(conn net.Conn) {
 				} else {
 					totalDuration += msg.Timestamp // 绝对时间戳
 				}
-				room.PushVideo(totalDuration, msg.Body)
+				Stream.PushVideo(totalDuration, msg.Body)
 			}
 			msg.Recycle()
 		} else {
