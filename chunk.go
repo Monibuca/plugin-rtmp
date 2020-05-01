@@ -3,8 +3,8 @@ package rtmp
 import (
 	"errors"
 
-	"github.com/Monibuca/engine/pool"
-	"github.com/Monibuca/engine/util"
+	"github.com/Monibuca/engine/v2/pool"
+	"github.com/Monibuca/engine/v2/util"
 )
 
 // RTMP协议中基本的数据单元称为消息(Message).

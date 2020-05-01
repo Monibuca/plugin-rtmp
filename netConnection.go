@@ -6,10 +6,10 @@ import (
 	"io"
 	"log"
 
-	"github.com/Monibuca/engine"
-	"github.com/Monibuca/engine/avformat"
-	"github.com/Monibuca/engine/pool"
-	"github.com/Monibuca/engine/util"
+	"github.com/Monibuca/engine/v2"
+	"github.com/Monibuca/engine/v2/avformat"
+	"github.com/Monibuca/engine/v2/pool"
+	"github.com/Monibuca/engine/v2/util"
 )
 
 const (
