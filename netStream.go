@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	. "github.com/Monibuca/engine"
-	"github.com/Monibuca/engine/avformat"
+	. "github.com/Monibuca/engine/v2"
+	"github.com/Monibuca/engine/v2/avformat"
 )
 
 type RTMP struct {

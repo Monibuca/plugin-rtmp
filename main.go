@@ -3,7 +3,7 @@ package rtmp
 import (
 	"log"
 
-	. "github.com/Monibuca/engine"
+	. "github.com/Monibuca/engine/v2"
 	. "github.com/logrusorgru/aurora"
 )
 

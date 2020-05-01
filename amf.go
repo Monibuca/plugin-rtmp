@@ -8,8 +8,8 @@ import (
 	"log"
 	"reflect"
 
-	"github.com/Monibuca/engine/pool"
-	"github.com/Monibuca/engine/util"
+	"github.com/Monibuca/engine/v2/pool"
+	"github.com/Monibuca/engine/v2/util"
 )
 
 // Action Message Format -- AMF 0
