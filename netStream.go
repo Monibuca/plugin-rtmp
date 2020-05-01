@@ -13,7 +13,7 @@ import (
 )
 
 type RTMP struct {
-	InputStream
+	Publisher
 }
 
 func ListenRtmp(addr string) error {
@@ -167,7 +167,7 @@ func processRtmp(conn net.Conn) {
 					err = nc.SendMessage(SEND_PLAY_RESPONSE_MESSAGE, newPlayResponseMessageData(nc.streamID, NetStream_Play_Start, Level_Status))
 					if err == nil {
 						streams[nc.streamID] = stream
-						go stream.Play(streamPath)
+						go stream.Subscribe(streamPath)
 					} else {
 						return
 					}
@@ -185,7 +185,7 @@ func processRtmp(conn net.Conn) {
 				} else {
 					totalDuration += msg.Timestamp // 绝对时间戳
 				}
-				Stream.PushAudio(totalDuration, msg.Body)
+				stream.PushAudio(totalDuration, msg.Body)
 			case RTMP_MSG_VIDEO:
 				// pkt := avformat.NewAVPacket(RTMP_MSG_VIDEO)
 				if msg.Timestamp == 0xffffff {
@@ -193,7 +193,7 @@ func processRtmp(conn net.Conn) {
 				} else {
 					totalDuration += msg.Timestamp // 绝对时间戳
 				}
-				Stream.PushVideo(totalDuration, msg.Body)
+				stream.PushVideo(totalDuration, msg.Body)
 			}
 			msg.Recycle()
 		} else {
