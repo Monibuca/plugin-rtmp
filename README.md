@@ -12,9 +12,9 @@ RTMP
 
 ```toml
 [RTMP]
-FirstScreen = false
 ListenAddr = ":1935"
+ChunkSize = 512
 ```
 
-- FirstScreen 代表是否打开首屏秒开
 - ListenAddr 代表监听的端口号
+- ChunkSize 分包大小

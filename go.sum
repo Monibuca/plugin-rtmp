@@ -4,6 +4,8 @@ github.com/Monibuca/engine v1.2.2 h1:hNjsrZpOmui8lYhgCJ5ltJU8g/k0Rrdysx2tHNGGnbI
 github.com/Monibuca/engine v1.2.2/go.mod h1:WbDkXENLjcPjyjCR1Mix1GA+uAlwORkv/+8aMVrDX2g=
 github.com/Monibuca/engine/v2 v2.0.0-alpha1 h1:RT+rKOJC1MdFNZp6gADGdzGLxEhYN35MKEAx7FwHtps=
 github.com/Monibuca/engine/v2 v2.0.0-alpha1/go.mod h1:34EYjjV15G6myuHOKaJkO7y5tJ1Arq/NfC9Weacr2mc=
+github.com/Monibuca/engine/v2 v2.0.0 h1:8FjaScrtN8QdbcxO9zZYABMC0Re3I1O1T4p94zAXYb0=
+github.com/Monibuca/engine/v2 v2.0.0/go.mod h1:34EYjjV15G6myuHOKaJkO7y5tJ1Arq/NfC9Weacr2mc=
 github.com/StackExchange/wmi v0.0.0-20190523213315-cbe66965904d h1:G0m3OIz70MZUWq3EgK3CesDbo8upS2Vm9/P3FtgI+Jk=
 github.com/StackExchange/wmi v0.0.0-20190523213315-cbe66965904d/go.mod h1:3eOhrUMpNV+6aFIbp5/iudMxNCF27Vw2OZgy4xEx0Fg=
 github.com/davecgh/go-spew v1.1.0 h1:ZDRjVQ15GmhC3fiQ8ni8+OwkZQO4DARzQgrnXU1Liz8=
