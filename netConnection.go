@@ -439,7 +439,7 @@ func (conn *NetConnection) readChunk() (msg *Chunk, err error) {
 	}
 	msgLen := int(chunkHead.MessageLength)
 	if !ok {
-		currentBody = (pool.GetSlice(msgLen))[:0]
+		currentBody = make([]byte,0,msgLen)
 		conn.incompleteRtmpBody[ChunkStreamID] = currentBody
 	}
 
