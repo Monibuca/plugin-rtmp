@@ -266,11 +266,17 @@ func decodeCommandAMF0(chunk *Chunk) {
 			cmdMsg,
 			readNumber(amf),
 		}
-	case "deleteStream", "closeStream", "releaseStream":
+	case "deleteStream", "closeStream":
 		amf.readNull()
 		chunk.MsgData = &CURDStreamMessage{
 			cmdMsg,
 			uint32(readNumber(amf)),
+		}
+	case "releaseStream":
+		amf.readNull()
+		chunk.MsgData = &ReleaseStreamMessage{
+			cmdMsg,
+			readString(amf),
 		}
 	case "receiveAudio", "receiveVideo":
 		amf.readNull()
@@ -328,6 +334,13 @@ type Commander interface {
 
 func (cmd *CommandMessage) GetCommand() *CommandMessage {
 	return cmd
+}
+func (msg *CommandMessage) Encode() (b []byte) {
+	amf := newAMFEncoder()
+	amf.writeString(msg.CommandName)
+	amf.writeNumber(float64(msg.TransactionId))
+	amf.writeNull()
+	return amf.Bytes()
 }
 
 // Protocol control message 1.
@@ -526,6 +539,14 @@ type CURDStreamMessage struct {
 }
 
 func (msg *CURDStreamMessage) Encode0() {
+}
+
+type ReleaseStreamMessage struct {
+	CommandMessage
+	StreamName string
+}
+
+func (msg *ReleaseStreamMessage) Encode0() {
 }
 
 // Receive Audio Message

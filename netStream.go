@@ -177,6 +177,18 @@ func processRtmp(conn net.Conn) {
 						stream.Cancel()
 						delete(streams, cm.StreamId)
 					}
+				case "releaseStream":
+					cm := msg.MsgData.(*ReleaseStreamMessage)
+					streamPath := nc.appName + "/" + strings.Split(cm.StreamName, "?")[0]
+					amfobj := newAMFObjects()
+					if s := FindStream(streamPath); s != nil {
+						amfobj["level"] = "_result"
+						s.Close()
+					} else {
+						amfobj["level"] = "_error"
+					}
+					amfobj["tid"] = cm.TransactionId
+					err = nc.SendMessage(SEND_UNPUBLISH_RESPONSE_MESSAGE, &amfobj)
 				}
 			case RTMP_MSG_AUDIO:
 				// pkt := avformat.NewAVPacket(RTMP_MSG_AUDIO)

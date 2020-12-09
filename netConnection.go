@@ -322,6 +322,14 @@ func (conn *NetConnection) SendMessage(message string, args interface{}) error {
 		m.StreamID = streamID
 		return conn.writeMessage(RTMP_MSG_AMF0_COMMAND, m)
 	case SEND_UNPUBLISH_RESPONSE_MESSAGE:
+		data, ok := args.(AMFObjects)
+		if !ok {
+			errors.New(SEND_UNPUBLISH_RESPONSE_MESSAGE + ", The parameter is AMFObjects(map[string]interface{})")
+		}
+		m := new(CommandMessage)
+		m.TransactionId = data["tid"].(uint64)
+		m.CommandName = "releaseStream" + data["level"].(string)
+		return conn.writeMessage(RTMP_MSG_AMF0_COMMAND, m)
 	case SEND_FULL_AUDIO_MESSAGE:
 		audio, ok := args.(*avformat.SendPacket)
 		if !ok {
@@ -439,7 +447,7 @@ func (conn *NetConnection) readChunk() (msg *Chunk, err error) {
 	}
 	msgLen := int(chunkHead.MessageLength)
 	if !ok {
-		currentBody = make([]byte,0,msgLen)
+		currentBody = make([]byte, 0, msgLen)
 		conn.incompleteRtmpBody[ChunkStreamID] = currentBody
 	}
 
