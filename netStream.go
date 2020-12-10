@@ -188,7 +188,7 @@ func processRtmp(conn net.Conn) {
 						amfobj["level"] = "_error"
 					}
 					amfobj["tid"] = cm.TransactionId
-					err = nc.SendMessage(SEND_UNPUBLISH_RESPONSE_MESSAGE, &amfobj)
+					err = nc.SendMessage(SEND_UNPUBLISH_RESPONSE_MESSAGE, amfobj)
 				}
 			case RTMP_MSG_AUDIO:
 				// pkt := avformat.NewAVPacket(RTMP_MSG_AUDIO)
