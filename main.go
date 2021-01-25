@@ -1,10 +1,10 @@
 package rtmp
 
 import (
-	"log"
-
-	. "github.com/Monibuca/engine/v2"
+	. "github.com/Monibuca/engine/v3"
+	. "github.com/Monibuca/utils/v3"
 	. "github.com/logrusorgru/aurora"
+	"log"
 )
 
 var config = struct {
@@ -15,7 +15,6 @@ var config = struct {
 func init() {
 	InstallPlugin(&PluginConfig{
 		Name:   "RTMP",
-		Type:   PLUGIN_SUBSCRIBER | PLUGIN_PUBLISHER,
 		Config: &config,
 		Run:    run,
 	})

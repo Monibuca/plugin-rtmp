@@ -3,13 +3,10 @@ package rtmp
 import (
 	"bufio"
 	"errors"
+	"github.com/Monibuca/engine/v3"
+	"github.com/Monibuca/utils/v3"
 	"io"
 	"log"
-
-	"github.com/Monibuca/engine/v2"
-	"github.com/Monibuca/engine/v2/avformat"
-	"github.com/Monibuca/engine/v2/pool"
-	"github.com/Monibuca/engine/v2/util"
 )
 
 const (
@@ -86,7 +83,7 @@ type NetConnection struct {
 	writeChunkSize     int
 	readChunkSize      int
 	incompleteRtmpBody map[uint32][]byte       // 完整的RtmpBody,在网络上是被分成一块一块的,需要将其组装起来
-	nextStreamID       func(uint32) uint32     // 下一个流ID
+	nextStreamID       func() uint32           // 下一个流ID
 	streamID           uint32                  // 流ID
 	rtmpHeader         map[uint32]*ChunkHeader // RtmpHeader
 	objectEncoding     float64
@@ -331,33 +328,33 @@ func (conn *NetConnection) SendMessage(message string, args interface{}) error {
 		m.CommandName = "releaseStream" + data["level"].(string)
 		return conn.writeMessage(RTMP_MSG_AMF0_COMMAND, m)
 	case SEND_FULL_AUDIO_MESSAGE:
-		audio, ok := args.(*avformat.SendPacket)
+		audio, ok := args.(*AVPack)
 		if !ok {
 			errors.New(message + ", The parameter is AVPacket")
 		}
 
-		return conn.sendAVMessage(audio, true, true)
+		return conn.sendAVMessage(audio.Timestamp, audio.Payload, true, true)
 	case SEND_AUDIO_MESSAGE:
-		audio, ok := args.(*avformat.SendPacket)
+		audio, ok := args.(*AVPack)
 		if !ok {
 			errors.New(message + ", The parameter is AVPacket")
 		}
 
-		return conn.sendAVMessage(audio, true, false)
+		return conn.sendAVMessage(audio.Timestamp, audio.Payload, true, false)
 	case SEND_FULL_VDIEO_MESSAGE:
-		video, ok := args.(*avformat.SendPacket)
+		video, ok := args.(*AVPack)
 		if !ok {
 			errors.New(message + ", The parameter is AVPacket")
 		}
 
-		return conn.sendAVMessage(video, false, true)
+		return conn.sendAVMessage(video.Timestamp, video.Payload, false, true)
 	case SEND_VIDEO_MESSAGE:
-		video, ok := args.(*avformat.SendPacket)
+		video, ok := args.(*AVPack)
 		if !ok {
 			errors.New(message + ", The parameter is AVPacket")
 		}
 
-		return conn.sendAVMessage(video, false, false)
+		return conn.sendAVMessage(video.Timestamp, video.Payload, false, false)
 	}
 
 	return errors.New("send message no exist")
@@ -366,7 +363,7 @@ func (conn *NetConnection) SendMessage(message string, args interface{}) error {
 // 当发送音视频数据的时候,当块类型为12的时候,Chunk Message Header有一个字段TimeStamp,指明一个时间
 // 当块类型为4,8的时候,Chunk Message Header有一个字段TimeStamp Delta,记录与上一个Chunk的时间差值
 // 当块类型为0的时候,Chunk Message Header没有时间字段,与上一个Chunk时间值相同
-func (conn *NetConnection) sendAVMessage(av *avformat.SendPacket, isAudio bool, isFirst bool) error {
+func (conn *NetConnection) sendAVMessage(ts uint32, payload []byte, isAudio bool, isFirst bool) error {
 	if conn.writeSeqNum > conn.bandwidth {
 		conn.totalWrite += conn.writeSeqNum
 		conn.writeSeqNum = 0
@@ -378,19 +375,18 @@ func (conn *NetConnection) sendAVMessage(av *avformat.SendPacket, isAudio bool, 
 	var need []byte
 	var head *ChunkHeader
 	if isAudio {
-		head = newRtmpHeader(RTMP_CSID_AUDIO, av.Timestamp, uint32(len(av.Payload)), RTMP_MSG_AUDIO, conn.streamID, 0)
+		head = newRtmpHeader(RTMP_CSID_AUDIO, ts, uint32(len(payload)), RTMP_MSG_AUDIO, conn.streamID, 0)
 	} else {
-		head = newRtmpHeader(RTMP_CSID_VIDEO, av.Timestamp, uint32(len(av.Payload)), RTMP_MSG_VIDEO, conn.streamID, 0)
+		head = newRtmpHeader(RTMP_CSID_VIDEO, ts, uint32(len(payload)), RTMP_MSG_VIDEO, conn.streamID, 0)
 	}
 
 	// 第一次是发送关键帧,需要完整的消息头(Chunk Basic Header(1) + Chunk Message Header(11) + Extended Timestamp(4)(可能会要包括))
 	// 后面开始,就是直接发送音视频数据,那么直接发送,不需要完整的块(Chunk Basic Header(1) + Chunk Message Header(7))
 	// 当Chunk Type为0时(即Chunk12),
 	if isFirst {
-		need, err = conn.encodeChunk12(head, av.Payload, conn.writeChunkSize)
+		need, err = conn.encodeChunk12(head, payload, conn.writeChunkSize)
 	} else {
-		need, err = conn.encodeChunk8(head, av.Payload, conn.writeChunkSize)
-
+		need, err = conn.encodeChunk8(head, payload, conn.writeChunkSize)
 	}
 	if err != nil {
 		return err
@@ -518,20 +514,20 @@ func (conn *NetConnection) readChunkType(h *ChunkHeader, chunkType byte) (head *
 	case 0:
 		{
 			// Timestamp 3 bytes
-			b := pool.GetSlice(3)
+			b := utils.GetSlice(3)
 			if _, err := io.ReadFull(conn, b); err != nil {
 				return nil, err
 			}
 			conn.readSeqNum += 3
-			h.Timestamp = util.BigEndian.Uint24(b) //type = 0的时间戳为绝对时间,其他的都为相对时间
+			h.Timestamp = utils.BigEndian.Uint24(b) //type = 0的时间戳为绝对时间,其他的都为相对时间
 
 			// Message Length 3 bytes
 			if _, err = io.ReadFull(conn, b); err != nil { // 读取Message Length,这里的长度指的是一条信令或者一帧视频数据或音频数据的长度,而不是Chunk data的长度.
 				return nil, err
 			}
 			conn.readSeqNum += 3
-			h.MessageLength = util.BigEndian.Uint24(b)
-			pool.RecycleSlice(b)
+			h.MessageLength = utils.BigEndian.Uint24(b)
+			utils.RecycleSlice(b)
 			// Message Type ID 1 bytes
 			v, err := conn.ReadByte() // 读取Message Type ID
 			if err != nil {
@@ -541,12 +537,12 @@ func (conn *NetConnection) readChunkType(h *ChunkHeader, chunkType byte) (head *
 			h.MessageTypeID = v
 
 			// Message Stream ID 4bytes
-			bb := pool.GetSlice(4)
+			bb := utils.GetSlice(4)
 			if _, err = io.ReadFull(conn, bb); err != nil { // 读取Message Stream ID
 				return nil, err
 			}
 			conn.readSeqNum += 4
-			h.MessageStreamID = util.LittleEndian.Uint32(bb)
+			h.MessageStreamID = utils.LittleEndian.Uint32(bb)
 
 			// ExtendTimestamp 4 bytes
 			if h.Timestamp == 0xffffff { // 对于type 0的chunk,绝对时间戳在这里表示,如果时间戳值大于等于0xffffff(16777215),该值必须是0xffffff,且时间戳扩展字段必须发送,其他情况没有要求
@@ -554,28 +550,28 @@ func (conn *NetConnection) readChunkType(h *ChunkHeader, chunkType byte) (head *
 					return nil, err
 				}
 				conn.readSeqNum += 4
-				h.ExtendTimestamp = util.BigEndian.Uint32(bb)
+				h.ExtendTimestamp = utils.BigEndian.Uint32(bb)
 			}
-			pool.RecycleSlice(bb)
+			utils.RecycleSlice(bb)
 		}
 	case 1:
 		{
 			// Timestamp 3 bytes
-			b := pool.GetSlice(3)
+			b := utils.GetSlice(3)
 			if _, err = io.ReadFull(conn, b); err != nil {
 				return nil, err
 			}
 			conn.readSeqNum += 3
 			h.ChunkType = chunkType
-			h.Timestamp = util.BigEndian.Uint24(b)
+			h.Timestamp = utils.BigEndian.Uint24(b)
 
 			// Message Length 3 bytes
 			if _, err = io.ReadFull(conn, b); err != nil {
 				return nil, err
 			}
 			conn.readSeqNum += 3
-			h.MessageLength = util.BigEndian.Uint24(b)
-			pool.RecycleSlice(b)
+			h.MessageLength = utils.BigEndian.Uint24(b)
+			utils.RecycleSlice(b)
 			// Message Type ID 1 bytes
 			v, err := conn.ReadByte()
 			if err != nil {
@@ -586,35 +582,35 @@ func (conn *NetConnection) readChunkType(h *ChunkHeader, chunkType byte) (head *
 
 			// ExtendTimestamp 4 bytes
 			if h.Timestamp == 0xffffff {
-				bb := pool.GetSlice(4)
+				bb := utils.GetSlice(4)
 				if _, err := io.ReadFull(conn, bb); err != nil {
 					return nil, err
 				}
 				conn.readSeqNum += 4
-				h.ExtendTimestamp = util.BigEndian.Uint32(bb)
-				pool.RecycleSlice(bb)
+				h.ExtendTimestamp = utils.BigEndian.Uint32(bb)
+				utils.RecycleSlice(bb)
 			}
 		}
 	case 2:
 		{
 			// Timestamp 3 bytes
-			b := pool.GetSlice(3)
+			b := utils.GetSlice(3)
 			if _, err = io.ReadFull(conn, b); err != nil {
 				return nil, err
 			}
 			conn.readSeqNum += 3
 			h.ChunkType = chunkType
-			h.Timestamp = util.BigEndian.Uint24(b)
-			pool.RecycleSlice(b)
+			h.Timestamp = utils.BigEndian.Uint24(b)
+			utils.RecycleSlice(b)
 			// ExtendTimestamp 4 bytes
 			if h.Timestamp == 0xffffff {
-				bb := pool.GetSlice(4)
+				bb := utils.GetSlice(4)
 				if _, err := io.ReadFull(conn, bb); err != nil {
 					return nil, err
 				}
 				conn.readSeqNum += 4
-				h.ExtendTimestamp = util.BigEndian.Uint32(bb)
-				pool.RecycleSlice(bb)
+				h.ExtendTimestamp = utils.BigEndian.Uint32(bb)
+				utils.RecycleSlice(bb)
 			}
 		}
 	case 3:

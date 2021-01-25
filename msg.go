@@ -5,7 +5,7 @@ import (
 	"log"
 	"sync"
 
-	"github.com/Monibuca/engine/v2/util"
+	"github.com/Monibuca/utils/v3"
 )
 
 const (
@@ -121,11 +121,11 @@ type HaveStreamID interface {
 func GetRtmpMessage(chunk *Chunk) {
 	switch chunk.MessageTypeID {
 	case RTMP_MSG_CHUNK_SIZE, RTMP_MSG_ABORT, RTMP_MSG_ACK, RTMP_MSG_ACK_SIZE:
-		chunk.MsgData = Uint32Message(util.BigEndian.Uint32(chunk.Body))
+		chunk.MsgData = Uint32Message(utils.BigEndian.Uint32(chunk.Body))
 	case RTMP_MSG_USER_CONTROL: // RTMP消息类型ID=4, 用户控制消息.客户端或服务端发送本消息通知对方用户的控制事件.
 		{
 			base := UserControlMessage{
-				EventType: util.BigEndian.Uint16(chunk.Body),
+				EventType: utils.BigEndian.Uint16(chunk.Body),
 				EventData: chunk.Body[2:],
 			}
 			switch base.EventType {
@@ -136,28 +136,28 @@ func GetRtmpMessage(chunk *Chunk) {
 				}
 				if len(base.EventData) >= 4 {
 					//服务端在成功地从客户端接收连接命令之后发送本事件,事件ID为0.事件数据是表示开始起作用的流的ID.
-					m.StreamID = util.BigEndian.Uint32(base.EventData)
+					m.StreamID = utils.BigEndian.Uint32(base.EventData)
 				}
 				chunk.MsgData = m
 			case RTMP_USER_STREAM_EOF, RTMP_USER_STREAM_DRY, RTMP_USER_STREAM_IS_RECORDED: // 服务端向客户端发送本事件通知客户端,数据回放完成.果没有发行额外的命令,就不再发送数据.客户端丢弃从流中接收的消息.4字节的事件数据表示,回放结束的流的ID.
 				m := &StreamIDMessage{
 					UserControlMessage: base,
-					StreamID:           util.BigEndian.Uint32(base.EventData),
+					StreamID:           utils.BigEndian.Uint32(base.EventData),
 				}
 				chunk.MsgData = m
 			case RTMP_USER_SET_BUFFLEN: // 客户端向服务端发送本事件,告知对方自己存储一个流的数据的缓存的长度(毫秒单位).当服务端开始处理一个流得时候发送本事件.事件数据的头四个字节表示流ID,后4个字节表示缓存长度(毫秒单位).
 				m := &SetBufferMessage{
 					StreamIDMessage: StreamIDMessage{
 						UserControlMessage: base,
-						StreamID:           util.BigEndian.Uint32(base.EventData),
+						StreamID:           utils.BigEndian.Uint32(base.EventData),
 					},
-					Millisecond: util.BigEndian.Uint32(base.EventData[4:]),
+					Millisecond: utils.BigEndian.Uint32(base.EventData[4:]),
 				}
 				chunk.MsgData = m
 			case RTMP_USER_PING_REQUEST: // 服务端通过本事件测试客户端是否可达.事件数据是4个字节的事件戳.代表服务调用本命令的本地时间.客户端在接收到kMsgPingRequest之后返回kMsgPingResponse事件
 				m := &PingRequestMessage{
 					UserControlMessage: base,
-					Timestamp:          util.BigEndian.Uint32(base.EventData),
+					Timestamp:          utils.BigEndian.Uint32(base.EventData),
 				}
 				chunk.MsgData = m
 			case RTMP_USER_PING_RESPONSE, RTMP_USER_EMPTY: // 客户端向服务端发送本消息响应ping请求.事件数据是接kMsgPingRequest请求的时间.
@@ -168,7 +168,7 @@ func GetRtmpMessage(chunk *Chunk) {
 		}
 	case RTMP_MSG_BANDWIDTH: // RTMP消息类型ID=6, 置对等端带宽.客户端或服务端发送本消息更新对等端的输出带宽.
 		m := &SetPeerBandwidthMessage{
-			AcknowledgementWindowsize: util.BigEndian.Uint32(chunk.Body),
+			AcknowledgementWindowsize: utils.BigEndian.Uint32(chunk.Body),
 		}
 		if len(chunk.Body) > 4 {
 			m.LimitType = chunk.Body[4]
@@ -351,7 +351,7 @@ type Uint32Message uint32
 
 func (msg Uint32Message) Encode() (b []byte) {
 	b = make([]byte, 4)
-	util.BigEndian.PutUint32(b, uint32(msg))
+	utils.BigEndian.PutUint32(b, uint32(msg))
 	return b
 }
 
@@ -378,7 +378,7 @@ type SetPeerBandwidthMessage struct {
 
 func (msg *SetPeerBandwidthMessage) Encode() (b []byte) {
 	b = make([]byte, 5)
-	util.BigEndian.PutUint32(b, msg.AcknowledgementWindowsize)
+	utils.BigEndian.PutUint32(b, msg.AcknowledgementWindowsize)
 	b[4] = msg.LimitType
 	return
 }
@@ -869,8 +869,8 @@ type StreamIDMessage struct {
 
 func (msg *StreamIDMessage) Encode() (b []byte) {
 	b = make([]byte, 6)
-	util.BigEndian.PutUint16(b, msg.EventType)
-	util.BigEndian.PutUint32(b[2:], msg.StreamID)
+	utils.BigEndian.PutUint16(b, msg.EventType)
+	utils.BigEndian.PutUint32(b[2:], msg.StreamID)
 	msg.EventData = b[2:]
 	return
 }
@@ -887,9 +887,9 @@ type SetBufferMessage struct {
 
 func (msg *SetBufferMessage) Encode() []byte {
 	b := make([]byte, 10)
-	util.BigEndian.PutUint16(b, msg.EventType)
-	util.BigEndian.PutUint32(b[2:], msg.StreamID)
-	util.BigEndian.PutUint32(b[6:], msg.Millisecond)
+	utils.BigEndian.PutUint16(b, msg.EventType)
+	utils.BigEndian.PutUint32(b[2:], msg.StreamID)
+	utils.BigEndian.PutUint32(b[6:], msg.Millisecond)
 	msg.EventData = b[2:]
 	return b
 }
@@ -905,15 +905,20 @@ type PingRequestMessage struct {
 
 func (msg *PingRequestMessage) Encode() (b []byte) {
 	b = make([]byte, 6)
-	util.BigEndian.PutUint16(b, msg.EventType)
-	util.BigEndian.PutUint32(b[2:], msg.Timestamp)
+	utils.BigEndian.PutUint16(b, msg.EventType)
+	utils.BigEndian.PutUint32(b[2:], msg.Timestamp)
 	msg.EventData = b[2:]
 	return
 }
 
 func (msg *UserControlMessage) Encode() []byte {
 	b := make([]byte, 2)
-	util.BigEndian.PutUint16(b, msg.EventType)
+	utils.BigEndian.PutUint16(b, msg.EventType)
 	msg.EventData = b[2:]
 	return b
+}
+
+type AVPack struct {
+	Timestamp uint32
+	Payload   []byte
 }
