@@ -9,7 +9,6 @@ import (
 	"log"
 	"net"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -148,6 +147,7 @@ func processRtmp(conn net.Conn) {
 				nalus = nalus[nalulen+nalulenSize:]
 			}
 		}
+		close(stream.WaitPub)
 	}
 	for {
 		if msg, err := nc.RecvMessage(); err == nil {
@@ -183,68 +183,58 @@ func processRtmp(conn net.Conn) {
 					pm := msg.MsgData.(*PlayMessage)
 					streamPath := nc.appName + "/" + strings.Split(pm.StreamName, "?")[0]
 					nc.writeChunkSize = config.ChunkSize
-					stream := engine.Subscriber{}
-					stream.Type = "RTMP"
-					stream.ID = fmt.Sprintf("%s|%d", conn.RemoteAddr().String(), nc.streamID)
-					err = nc.SendMessage(SEND_CHUNK_SIZE_MESSAGE, uint32(nc.writeChunkSize))
-					err = nc.SendMessage(SEND_STREAM_IS_RECORDED_MESSAGE, nil)
-					err = nc.SendMessage(SEND_STREAM_BEGIN_MESSAGE, nil)
-					err = nc.SendMessage(SEND_PLAY_RESPONSE_MESSAGE, newPlayResponseMessageData(nc.streamID, NetStream_Play_Reset, Level_Status))
-					err = nc.SendMessage(SEND_PLAY_RESPONSE_MESSAGE, newPlayResponseMessageData(nc.streamID, NetStream_Play_Start, Level_Status))
-					if err == nil {
-						streams[nc.streamID] = &stream
-						if err = stream.Subscribe(streamPath); err == nil {
-							vt, at := stream.VideoTracks[0], stream.AudioTracks[0]
-							err = nc.SendMessage(SEND_FULL_VDIEO_MESSAGE, &AVPack{Payload: vt.RtmpTag})
-							if at.SoundFormat == 10 {
-								err = nc.SendMessage(SEND_FULL_AUDIO_MESSAGE, &AVPack{Payload: at.RtmpTag})
-							}
-							var lastAudioTime, lastVideoTime uint32
-							var lock sync.Mutex
-							go vt.Play(stream.Context, func(pack engine.VideoPack) {
-								if lastVideoTime == 0 {
-									lastVideoTime = pack.Timestamp
-								}
-								t := pack.Timestamp - lastVideoTime
-								lastVideoTime = pack.Timestamp
-								payload := utils.GetSlice(9 + len(pack.Payload))
-								defer utils.RecycleSlice(payload)
-								if pack.NalType == codec.NALU_IDR_Picture {
-									payload[0] = 0x17
-								} else {
-									payload[0] = 0x27
-								}
-								payload[1] = 0x01
-								utils.BigEndian.PutUint32(payload[5:], uint32(len(pack.Payload)))
-								copy(payload[9:], pack.Payload)
-								lock.Lock()
-								defer lock.Unlock()
-								err = nc.SendMessage(SEND_VIDEO_MESSAGE, &AVPack{Timestamp: t, Payload: payload})
-							})
-							go at.Play(stream.Context, func(pack engine.AudioPack) {
-								if lastAudioTime == 0 {
-									lastAudioTime = pack.Timestamp
-								}
-								t := pack.Timestamp - lastAudioTime
-								lastAudioTime = pack.Timestamp
-								l := len(pack.Payload) + 1
-								if at.SoundFormat == 10 {
-									l++
-								}
-								payload := utils.GetSlice(l)
-								defer utils.RecycleSlice(payload)
-								payload[0] = at.RtmpTag[0]
-								if at.SoundFormat == 10 {
-									payload[1] = 1
-								}
-								copy(payload[2:], pack.Payload)
-								lock.Lock()
-								defer lock.Unlock()
-								err = nc.SendMessage(SEND_AUDIO_MESSAGE, &AVPack{Timestamp: t, Payload: payload})
-							})
+					var subscriber engine.Subscriber
+					subscriber.Type = "RTMP"
+					subscriber.ID = fmt.Sprintf("%s|%d", conn.RemoteAddr().String(), nc.streamID)
+					if err = subscriber.Subscribe(streamPath); err == nil {
+						streams[nc.streamID] = &subscriber
+						err = nc.SendMessage(SEND_CHUNK_SIZE_MESSAGE, uint32(nc.writeChunkSize))
+						err = nc.SendMessage(SEND_STREAM_IS_RECORDED_MESSAGE, nil)
+						err = nc.SendMessage(SEND_STREAM_BEGIN_MESSAGE, nil)
+						err = nc.SendMessage(SEND_PLAY_RESPONSE_MESSAGE, newPlayResponseMessageData(nc.streamID, NetStream_Play_Reset, Level_Status))
+						err = nc.SendMessage(SEND_PLAY_RESPONSE_MESSAGE, newPlayResponseMessageData(nc.streamID, NetStream_Play_Start, Level_Status))
+						vt, at := subscriber.VideoTracks[0], subscriber.AudioTracks[0]
+						err = nc.SendMessage(SEND_FULL_VDIEO_MESSAGE, &AVPack{Payload: vt.RtmpTag})
+						if at.SoundFormat == 10 {
+							err = nc.SendMessage(SEND_FULL_AUDIO_MESSAGE, &AVPack{Payload: at.RtmpTag})
 						}
-					} else {
-						return
+						var lastAudioTime, lastVideoTime uint32
+						go (&engine.TrackCP{at, vt}).Play(subscriber.Context, func(pack engine.AudioPack) {
+							if lastAudioTime == 0 {
+								lastAudioTime = pack.Timestamp
+							}
+							t := pack.Timestamp - lastAudioTime
+							lastAudioTime = pack.Timestamp
+							l := len(pack.Payload) + 1
+							if at.SoundFormat == 10 {
+								l++
+							}
+							payload := utils.GetSlice(l)
+							defer utils.RecycleSlice(payload)
+							payload[0] = at.RtmpTag[0]
+							if at.SoundFormat == 10 {
+								payload[1] = 1
+							}
+							copy(payload[2:], pack.Payload)
+							err = nc.SendMessage(SEND_AUDIO_MESSAGE, &AVPack{Timestamp: t, Payload: payload})
+						}, func(pack engine.VideoPack) {
+							if lastVideoTime == 0 {
+								lastVideoTime = pack.Timestamp
+							}
+							t := pack.Timestamp - lastVideoTime
+							lastVideoTime = pack.Timestamp
+							payload := utils.GetSlice(9 + len(pack.Payload))
+							defer utils.RecycleSlice(payload)
+							if pack.NalType == codec.NALU_IDR_Picture {
+								payload[0] = 0x17
+							} else {
+								payload[0] = 0x27
+							}
+							payload[1] = 0x01
+							utils.BigEndian.PutUint32(payload[5:], uint32(len(pack.Payload)))
+							copy(payload[9:], pack.Payload)
+							err = nc.SendMessage(SEND_VIDEO_MESSAGE, &AVPack{Timestamp: t, Payload: payload})
+						})
 					}
 				case "closeStream":
 					cm := msg.MsgData.(*CURDStreamMessage)
