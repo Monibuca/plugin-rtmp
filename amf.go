@@ -8,8 +8,7 @@ import (
 	"log"
 	"reflect"
 
-	"github.com/Monibuca/engine/v2/pool"
-	"github.com/Monibuca/engine/v2/util"
+	"github.com/Monibuca/utils/v3"
 )
 
 // Action Message Format -- AMF 0
@@ -110,14 +109,14 @@ func newAMFDecoder(b []byte) *AMF {
 }
 func (amf *AMF) readSize() (int, error) {
 	b, err := readBytes(amf.Buffer, 4)
-	size := int(util.BigEndian.Uint32(b))
-	pool.RecycleSlice(b)
+	size := int(utils.BigEndian.Uint32(b))
+	utils.RecycleSlice(b)
 	return size, err
 }
 func (amf *AMF) readSize16() (int, error) {
 	b, err := readBytes(amf.Buffer, 2)
-	size := int(util.BigEndian.Uint16(b))
-	pool.RecycleSlice(b)
+	size := int(utils.BigEndian.Uint16(b))
+	utils.RecycleSlice(b)
 	return size, err
 }
 func (amf *AMF) readObjects() (obj []AMFObject, err error) {
@@ -220,7 +219,7 @@ func (amf *AMF) encodeObject(t AMFObjects) (err error) {
 				return
 			}
 		case float64, uint, float32, int, int16, int32, int64, uint16, uint32, uint64, uint8, int8:
-			if err = amf.writeObjectNumber(k, util.ToFloat64(vvv)); err != nil {
+			if err = amf.writeObjectNumber(k, utils.ToFloat64(vvv)); err != nil {
 				return
 			}
 		case bool:
@@ -236,10 +235,10 @@ func (amf *AMF) readDate() (t uint64, err error) {
 	_, err = amf.ReadByte() // 取出第一个字节 8 Bit == 1 Byte. buf - 1.
 	var b []byte
 	b, err = readBytes(amf.Buffer, 8) // 在取出8个字节,并且读到b中. buf - 8
-	t = util.BigEndian.Uint64(b)
-	pool.RecycleSlice(b)
+	t = utils.BigEndian.Uint64(b)
+	utils.RecycleSlice(b)
 	b, err = readBytes(amf.Buffer, 2)
-	pool.RecycleSlice(b)
+	utils.RecycleSlice(b)
 	return t, err
 }
 
@@ -290,7 +289,7 @@ func (amf *AMF) readString1() (str string, err error) {
 	var b []byte
 	b, err = readBytes(amf.Buffer, size) // 读取全部数据,读取长度为l,因为这两个字节(l变量)保存的是数据长度
 	str = string(b)
-	pool.RecycleSlice(b)
+	utils.RecycleSlice(b)
 	return
 }
 
@@ -301,7 +300,7 @@ func (amf *AMF) readLongString() (str string, err error) {
 	var b []byte
 	b, err = readBytes(amf.Buffer, size) // 读取全部数据,读取长度为l,因为这两个字节(l变量)保存的是数据长度
 	str = string(b)
-	pool.RecycleSlice(b)
+	utils.RecycleSlice(b)
 	return
 }
 
@@ -346,16 +345,16 @@ func (amf *AMF) readObject() (m AMFObjects, err error) {
 }
 
 func readBytes(buf *bytes.Buffer, length int) (b []byte, err error) {
-	b = pool.GetSlice(length)
+	b = utils.GetSlice(length)
 	if i, _ := buf.Read(b); length != i {
 		err = errors.New(fmt.Sprintf("not enough bytes,%v/%v", buf.Len(), length))
 	}
 	return
 }
 func (amf *AMF) writeSize16(l int) (err error) {
-	b := pool.GetSlice(2)
-	defer pool.RecycleSlice(b)
-	util.BigEndian.PutUint16(b, uint16(l))
+	b := utils.GetSlice(2)
+	defer utils.RecycleSlice(b)
+	utils.BigEndian.PutUint16(b, uint16(l))
 	_, err = amf.Write(b)
 	return
 }

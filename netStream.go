@@ -55,6 +55,9 @@ func processRtmp(conn net.Conn) {
 	defer func() {
 		conn.Close()
 		if stream != nil {
+			if stream.Publisher != nil {
+				stream.Publisher.Dispose()
+			}
 			stream.Close()
 		}
 		for _, s := range streams {
