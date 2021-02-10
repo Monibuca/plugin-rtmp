@@ -91,7 +91,6 @@ func processRtmp(conn net.Conn) {
 			if msg.Body[1] != 0 {
 				return
 			}
-			va.ASC = msg.Body[2:]
 			config1, config2 := msg.Body[2], msg.Body[3]
 			//audioObjectType = (config1 & 0xF8) >> 3
 			// 1 AAC MAIN 	ISO/IEC 14496-3 subpart 4
@@ -150,7 +149,7 @@ func processRtmp(conn net.Conn) {
 				nalus = nalus[nalulen+nalulenSize:]
 			}
 		}
-		close(stream.WaitPub)
+		close(vt.WaitFirst)
 	}
 	for {
 		if msg, err := nc.RecvMessage(); err == nil {
