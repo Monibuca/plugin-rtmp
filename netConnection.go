@@ -395,7 +395,7 @@ func (conn *NetConnection) sendAVMessage(ts uint32, payload []byte, isAudio bool
 		return err
 	}
 
-	// 如果音视频数据太大,一次发送不完,那么在这里进行分割(data + Chunk Basic Header(1))
+	// 如果在音视频数据太大,一次发送不完,那么这里进行分割(data + Chunk Basic Header(1))
 	for need != nil && len(need) > 0 {
 		if need, err = conn.encodeChunk1(head, need, conn.writeChunkSize); err != nil {
 			return err
