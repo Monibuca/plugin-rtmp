@@ -210,7 +210,7 @@ func processRtmp(conn net.Conn) {
 						err = nc.SendMessage(SEND_STREAM_BEGIN_MESSAGE, nil)
 						err = nc.SendMessage(SEND_PLAY_RESPONSE_MESSAGE, newPlayResponseMessageData(nc.streamID, NetStream_Play_Reset, Level_Status))
 						err = nc.SendMessage(SEND_PLAY_RESPONSE_MESSAGE, newPlayResponseMessageData(nc.streamID, NetStream_Play_Start, Level_Status))
-						vt, at := subscriber.GetVideoTrack("h264"), subscriber.OriginAudioTrack
+						vt, at := subscriber.OriginVideoTrack, subscriber.OriginAudioTrack
 						var lastTimeStamp uint32
 						if vt != nil {
 							err = nc.SendMessage(SEND_FULL_VDIEO_MESSAGE, &AVPack{Payload: vt.RtmpTag})
