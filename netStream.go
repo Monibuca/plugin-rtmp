@@ -141,26 +141,34 @@ func processRtmp(conn net.Conn) {
 		vt.CodecID = codecId
 		vt.RtmpTag = msg.Body
 		var info codec.AVCDecoderConfigurationRecord
+
 		//0:codec,1:IsAVCSequence,2~4:compositionTime
 		if _, err := info.Unmarshal(msg.Body[5:]); err == nil {
-			vt.Push(0, info.SequenceParameterSetNALUnit)
-			vt.Push(0, info.PictureParameterSetNALUnit)
+			var pack engine.VideoPack
+			pack.Payload = info.SequenceParameterSetNALUnit
+			vt.Push(pack)
+			pack.Payload = info.PictureParameterSetNALUnit
+			vt.Push(pack)
 		}
 		nalulenSize := int(info.LengthSizeMinusOne&3 + 1)
 		stream.SetOriginVT(vt)
 		rec_video = func(msg *Chunk) {
+			var pack engine.VideoPack
+			pack.CompositionTime = utils.BigEndian.Uint24(msg.Body[2:5])
 			nalus := msg.Body[5:]
 			if msg.Timestamp == 0xffffff {
 				abslouteTs += msg.ExtendTimestamp
 			} else {
 				abslouteTs += msg.Timestamp // 绝对时间戳
 			}
+			pack.Timestamp = abslouteTs
 			for len(nalus) > nalulenSize {
 				nalulen := 0
 				for i := 0; i < nalulenSize; i++ {
 					nalulen += int(nalus[i]) << (8 * (nalulenSize - i - 1))
 				}
-				vt.Push(abslouteTs, nalus[nalulenSize:nalulen+nalulenSize])
+				pack.Payload = nalus[nalulenSize : nalulen+nalulenSize]
+				vt.Push(pack)
 				nalus = nalus[nalulen+nalulenSize:]
 			}
 		}
@@ -220,7 +228,7 @@ func processRtmp(conn net.Conn) {
 								}
 								t := pack.Timestamp - lastTimeStamp
 								lastTimeStamp = pack.Timestamp
-								payload := codec.Nalu2RTMPTag(pack.Payload)
+								payload := pack.ToRTMPTag()
 								defer utils.RecycleSlice(payload)
 								err = nc.SendMessage(SEND_VIDEO_MESSAGE, &AVPack{Timestamp: t, Payload: payload})
 							}
@@ -237,7 +245,7 @@ func processRtmp(conn net.Conn) {
 								}
 								t := pack.Timestamp - lastTimeStamp
 								lastTimeStamp = pack.Timestamp
-								payload := codec.Audio2RTMPTag(aac, pack.Payload)
+								payload :=pack.ToRTMPTag(aac)
 								defer utils.RecycleSlice(payload)
 								err = nc.SendMessage(SEND_AUDIO_MESSAGE, &AVPack{Timestamp: t, Payload: payload})
 							}
