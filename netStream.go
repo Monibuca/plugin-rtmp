@@ -99,7 +99,7 @@ func processRtmp(conn net.Conn) {
 			// 3 AAC SSR 	ISO/IEC 14496-3 subpart 4
 			// 4 AAC LTP 	ISO/IEC 14496-3 subpart 4
 			va.SoundRate = codec.SamplingFrequencies[((config1&0x7)<<1)|(config2>>7)]
-			va.SoundType = (config2 >> 3) & 0x0F //声道
+			va.Channels = ((config2 >> 3) & 0x0F) //声道
 			//frameLengthFlag = (config2 >> 2) & 0x01
 			//dependsOnCoreCoder = (config2 >> 1) & 0x01
 			//extensionFlag = config2 & 0x01
@@ -119,7 +119,7 @@ func processRtmp(conn net.Conn) {
 			va.SoundFormat = soundFormat
 			va.SoundRate = codec.SoundRate[(tmp&0x0c)>>2] // 采样率 0 = 5.5 kHz or 1 = 11 kHz or 2 = 22 kHz or 3 = 44 kHz
 			va.SoundSize = (tmp & 0x02) >> 1              // 采样精度 0 = 8-bit samples or 1 = 16-bit samples
-			va.SoundType = tmp & 0x01                     // 0 单声道，1立体声
+			va.Channels = tmp&0x01 + 1                    // 0 单声道，1立体声
 			rec_audio = func(msg *Chunk) {
 				if msg.Timestamp == 0xffffff {
 					abslouteTs += msg.ExtendTimestamp
@@ -234,9 +234,7 @@ func processRtmp(conn net.Conn) {
 							}
 						}
 						if at != nil {
-							var aac byte
 							if at.SoundFormat == 10 {
-								aac = at.RtmpTag[0]
 								err = nc.SendMessage(SEND_FULL_AUDIO_MESSAGE, &AVPack{Payload: at.RtmpTag})
 							}
 							subscriber.OnAudio = func(pack engine.AudioPack) {
@@ -245,7 +243,7 @@ func processRtmp(conn net.Conn) {
 								}
 								t := pack.Timestamp - lastTimeStamp
 								lastTimeStamp = pack.Timestamp
-								payload :=pack.ToRTMPTag(aac)
+								payload := pack.ToRTMPTag(at.RtmpTag[0])
 								defer utils.RecycleSlice(payload)
 								err = nc.SendMessage(SEND_AUDIO_MESSAGE, &AVPack{Timestamp: t, Payload: payload})
 							}
