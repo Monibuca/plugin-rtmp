@@ -141,7 +141,6 @@ func processRtmp(conn net.Conn) {
 		vt.CodecID = codecId
 		vt.RtmpTag = msg.Body
 		var info codec.AVCDecoderConfigurationRecord
-
 		//0:codec,1:IsAVCSequence,2~4:compositionTime
 		if _, err := info.Unmarshal(msg.Body[5:]); err == nil {
 			var pack engine.VideoPack
@@ -220,32 +219,38 @@ func processRtmp(conn net.Conn) {
 						err = nc.SendMessage(SEND_PLAY_RESPONSE_MESSAGE, newPlayResponseMessageData(nc.streamID, NetStream_Play_Start, Level_Status))
 						vt, at := subscriber.OriginVideoTrack, subscriber.OriginAudioTrack
 						var lastTimeStamp uint32
+						getDeltaTime := func(ts uint32) (t uint32) {
+							t = ts - lastTimeStamp
+							lastTimeStamp = ts
+							return
+						}
 						if vt != nil {
 							err = nc.SendMessage(SEND_FULL_VDIEO_MESSAGE, &AVPack{Payload: vt.RtmpTag})
 							subscriber.OnVideo = func(pack engine.VideoPack) {
-								if lastTimeStamp == 0 {
-									lastTimeStamp = pack.Timestamp
-								}
-								t := pack.Timestamp - lastTimeStamp
-								lastTimeStamp = pack.Timestamp
 								payload := pack.ToRTMPTag()
 								defer utils.RecycleSlice(payload)
-								err = nc.SendMessage(SEND_VIDEO_MESSAGE, &AVPack{Timestamp: t, Payload: payload})
+								lastTimeStamp = pack.Timestamp
+								err = nc.SendMessage(SEND_FULL_VDIEO_MESSAGE, &AVPack{Timestamp: 0, Payload: payload})
+								subscriber.OnVideo = func(pack engine.VideoPack) {
+									payload := pack.ToRTMPTag()
+									defer utils.RecycleSlice(payload)
+									err = nc.SendMessage(SEND_VIDEO_MESSAGE, &AVPack{Timestamp: getDeltaTime(pack.Timestamp), Payload: payload})
+								}
 							}
 						}
 						if at != nil {
-							if at.SoundFormat == 10 {
-								err = nc.SendMessage(SEND_FULL_AUDIO_MESSAGE, &AVPack{Payload: at.RtmpTag})
-							}
 							subscriber.OnAudio = func(pack engine.AudioPack) {
-								if lastTimeStamp == 0 {
-									lastTimeStamp = pack.Timestamp
-								}
-								t := pack.Timestamp - lastTimeStamp
-								lastTimeStamp = pack.Timestamp
 								payload := pack.ToRTMPTag(at.RtmpTag[0])
 								defer utils.RecycleSlice(payload)
-								err = nc.SendMessage(SEND_AUDIO_MESSAGE, &AVPack{Timestamp: t, Payload: payload})
+								if at.SoundFormat == 10 {
+									err = nc.SendMessage(SEND_FULL_AUDIO_MESSAGE, &AVPack{Payload: at.RtmpTag})
+								}
+								subscriber.OnAudio = func(pack engine.AudioPack) {
+									payload := pack.ToRTMPTag(at.RtmpTag[0])
+									defer utils.RecycleSlice(payload)
+									err = nc.SendMessage(SEND_AUDIO_MESSAGE, &AVPack{Timestamp: getDeltaTime(pack.Timestamp), Payload: payload})
+								}
+								subscriber.OnAudio(pack)
 							}
 						}
 						go subscriber.Play(at, vt)
