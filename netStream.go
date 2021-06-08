@@ -183,7 +183,9 @@ func processRtmp(conn net.Conn) {
 					amfobj := newAMFObjects()
 					if s := FindStream(streamPath); s != nil {
 						amfobj["level"] = "_result"
-						s.Close()
+						if s.Publisher != nil {
+							s.Close()
+						}
 					} else {
 						amfobj["level"] = "_error"
 					}
