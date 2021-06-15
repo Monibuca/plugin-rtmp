@@ -11,7 +11,6 @@ import (
 
 	"github.com/Monibuca/engine/v3"
 	"github.com/Monibuca/utils/v3"
-	"github.com/Monibuca/utils/v3/codec"
 )
 
 func ListenRtmp(addr string) error {
@@ -81,97 +80,7 @@ func processRtmp(conn net.Conn) {
 		return
 	}
 	var rec_audio, rec_video func(*Chunk)
-	var abslouteTs uint32
-	rec_audio = func(msg *Chunk) {
-		va := engine.NewAudioTrack()
-		tmp := msg.Body[0]
-		soundFormat := tmp >> 4
-		switch soundFormat {
-		case 10:
-			if msg.Body[1] != 0 {
-				return
-			}
-			va.SoundFormat = soundFormat
-			config1, config2 := msg.Body[2], msg.Body[3]
-			//audioObjectType = (config1 & 0xF8) >> 3
-			// 1 AAC MAIN 	ISO/IEC 14496-3 subpart 4
-			// 2 AAC LC 	ISO/IEC 14496-3 subpart 4
-			// 3 AAC SSR 	ISO/IEC 14496-3 subpart 4
-			// 4 AAC LTP 	ISO/IEC 14496-3 subpart 4
-			va.SoundRate = codec.SamplingFrequencies[((config1&0x7)<<1)|(config2>>7)]
-			va.Channels = ((config2 >> 3) & 0x0F) //声道
-			//frameLengthFlag = (config2 >> 2) & 0x01
-			//dependsOnCoreCoder = (config2 >> 1) & 0x01
-			//extensionFlag = config2 & 0x01
-			va.RtmpTag = msg.Body
-			rec_audio = func(msg *Chunk) {
-				if msg.Timestamp == 0xffffff {
-					abslouteTs += msg.ExtendTimestamp
-				} else {
-					abslouteTs += msg.Timestamp // 绝对时间戳
-				}
-				va.Push(abslouteTs, msg.Body[2:])
-			}
-			stream.SetOriginAT(va)
-			return
-		case 7, 8:
-			va.RtmpTag = msg.Body
-			va.SoundFormat = soundFormat
-			va.SoundRate = codec.SoundRate[(tmp&0x0c)>>2] // 采样率 0 = 5.5 kHz or 1 = 11 kHz or 2 = 22 kHz or 3 = 44 kHz
-			va.SoundSize = (tmp & 0x02) >> 1              // 采样精度 0 = 8-bit samples or 1 = 16-bit samples
-			va.Channels = tmp&0x01 + 1                    // 0 单声道，1立体声
-			rec_audio = func(msg *Chunk) {
-				if msg.Timestamp == 0xffffff {
-					abslouteTs += msg.ExtendTimestamp
-				} else {
-					abslouteTs += msg.Timestamp // 绝对时间戳
-				}
-				va.Push(abslouteTs, msg.Body[1:])
-			}
-			stream.SetOriginAT(va)
-		}
-	}
-	rec_video = func(msg *Chunk) {
-		codecId := msg.Body[0] & 0x0F
-		// 等待AVC序列帧
-		if codecId != 7 && codecId != 12 || msg.Body[1] != 0 {
-			return
-		}
-		vt := engine.NewVideoTrack()
-		vt.CodecID = codecId
-		vt.RtmpTag = msg.Body
-		var info codec.AVCDecoderConfigurationRecord
-		//0:codec,1:IsAVCSequence,2~4:compositionTime
-		if _, err := info.Unmarshal(msg.Body[5:]); err == nil {
-			var pack engine.VideoPack
-			pack.Payload = info.SequenceParameterSetNALUnit
-			vt.Push(pack)
-			pack.Payload = info.PictureParameterSetNALUnit
-			vt.Push(pack)
-		}
-		nalulenSize := int(info.LengthSizeMinusOne&3 + 1)
-		stream.SetOriginVT(vt)
-		rec_video = func(msg *Chunk) {
-			var pack engine.VideoPack
-			pack.CompositionTime = utils.BigEndian.Uint24(msg.Body[2:5])
-			nalus := msg.Body[5:]
-			if msg.Timestamp == 0xffffff {
-				abslouteTs += msg.ExtendTimestamp
-			} else {
-				abslouteTs += msg.Timestamp // 绝对时间戳
-			}
-			pack.Timestamp = abslouteTs
-			for len(nalus) > nalulenSize {
-				nalulen := 0
-				for i := 0; i < nalulenSize; i++ {
-					nalulen += int(nalus[i]) << (8 * (nalulenSize - i - 1))
-				}
-				pack.Payload = nalus[nalulenSize : nalulen+nalulenSize]
-				vt.Push(pack)
-				nalus = nalus[nalulen+nalulenSize:]
-			}
-		}
-	}
+
 	for {
 		if msg, err := nc.RecvMessage(); err == nil {
 			if msg.MessageLength <= 0 {
@@ -194,9 +103,26 @@ func processRtmp(conn net.Conn) {
 				case "publish":
 					pm := msg.MsgData.(*PublishMessage)
 					streamPath := nc.appName + "/" + strings.Split(pm.PublishingName, "?")[0]
-					if pub := new(engine.Publisher); pub.Publish(streamPath) {
-						pub.Type = "RTMP"
-						stream = pub.Stream
+					stream = &engine.Stream{Type: "RTMP", StreamPath: streamPath}
+					if stream.Publish() {
+						var abslouteTs uint32
+						vt, at := stream.NewVideoTrack(0), stream.NewAudioTrack(0)
+						rec_audio = func(msg *Chunk) {
+							if msg.Timestamp == 0xffffff {
+								abslouteTs += msg.ExtendTimestamp
+							} else {
+								abslouteTs += msg.Timestamp // 绝对时间戳
+							}
+							at.PushByteStream(engine.AudioPack{Timestamp: abslouteTs, Payload: msg.Body})
+						}
+						rec_video = func(msg *Chunk) {
+							if msg.Timestamp == 0xffffff {
+								abslouteTs += msg.ExtendTimestamp
+							} else {
+								abslouteTs += msg.Timestamp // 绝对时间戳
+							}
+							vt.PushByteStream(engine.VideoPack{Timestamp: abslouteTs, Payload: msg.Body})
+						}
 						err = nc.SendMessage(SEND_STREAM_BEGIN_MESSAGE, nil)
 						err = nc.SendMessage(SEND_PUBLISH_START_MESSAGE, newPublishResponseMessageData(nc.streamID, NetStream_Publish_Start, Level_Status))
 					} else {
@@ -207,8 +133,9 @@ func processRtmp(conn net.Conn) {
 					streamPath := nc.appName + "/" + strings.Split(pm.StreamName, "?")[0]
 					nc.writeChunkSize = config.ChunkSize
 					subscriber := engine.Subscriber{
-						Type: "RTMP",
-						ID:   fmt.Sprintf("%s|%d", conn.RemoteAddr().String(), nc.streamID),
+						Type:             "RTMP",
+						ID:               fmt.Sprintf("%s|%d", conn.RemoteAddr().String(), nc.streamID),
+						ByteStreamFormat: true,
 					}
 					if err = subscriber.Subscribe(streamPath); err == nil {
 						streams[nc.streamID] = &subscriber
@@ -217,38 +144,34 @@ func processRtmp(conn net.Conn) {
 						err = nc.SendMessage(SEND_STREAM_BEGIN_MESSAGE, nil)
 						err = nc.SendMessage(SEND_PLAY_RESPONSE_MESSAGE, newPlayResponseMessageData(nc.streamID, NetStream_Play_Reset, Level_Status))
 						err = nc.SendMessage(SEND_PLAY_RESPONSE_MESSAGE, newPlayResponseMessageData(nc.streamID, NetStream_Play_Start, Level_Status))
-						vt, at := subscriber.OriginVideoTrack, subscriber.OriginAudioTrack
+						vt, at := subscriber.WaitVideoTrack(), subscriber.WaitAudioTrack()
 						var lastTimeStamp uint32
-						getDeltaTime := func(ts uint32) (t uint32) {
-							t = ts - lastTimeStamp
+						var getDeltaTime func(uint32) uint32
+						getDeltaTime = func(ts uint32) (t uint32) {
 							lastTimeStamp = ts
+							getDeltaTime = func(ts uint32) (t uint32) {
+								t = ts - lastTimeStamp
+								lastTimeStamp = ts
+								return
+							}
 							return
 						}
 						if vt != nil {
-							err = nc.SendMessage(SEND_FULL_VDIEO_MESSAGE, &AVPack{Payload: vt.RtmpTag})
+							err = nc.SendMessage(SEND_FULL_VDIEO_MESSAGE, &AVPack{Payload: vt.ExtraData.Payload})
 							subscriber.OnVideo = func(pack engine.VideoPack) {
-								payload := pack.ToRTMPTag()
-								defer utils.RecycleSlice(payload)
-								lastTimeStamp = pack.Timestamp
-								err = nc.SendMessage(SEND_FULL_VDIEO_MESSAGE, &AVPack{Timestamp: 0, Payload: payload})
+								err = nc.SendMessage(SEND_FULL_VDIEO_MESSAGE, &AVPack{Timestamp: 0, Payload: pack.Payload})
 								subscriber.OnVideo = func(pack engine.VideoPack) {
-									payload := pack.ToRTMPTag()
-									defer utils.RecycleSlice(payload)
-									err = nc.SendMessage(SEND_VIDEO_MESSAGE, &AVPack{Timestamp: getDeltaTime(pack.Timestamp), Payload: payload})
+									err = nc.SendMessage(SEND_VIDEO_MESSAGE, &AVPack{Timestamp: getDeltaTime(pack.Timestamp), Payload: pack.Payload})
 								}
 							}
 						}
 						if at != nil {
 							subscriber.OnAudio = func(pack engine.AudioPack) {
-								payload := pack.ToRTMPTag(at.RtmpTag[0])
-								defer utils.RecycleSlice(payload)
-								if at.SoundFormat == 10 {
-									err = nc.SendMessage(SEND_FULL_AUDIO_MESSAGE, &AVPack{Payload: at.RtmpTag})
+								if at.CodecID == 10 {
+									err = nc.SendMessage(SEND_FULL_AUDIO_MESSAGE, &AVPack{Payload: at.ExtraData})
 								}
 								subscriber.OnAudio = func(pack engine.AudioPack) {
-									payload := pack.ToRTMPTag(at.RtmpTag[0])
-									defer utils.RecycleSlice(payload)
-									err = nc.SendMessage(SEND_AUDIO_MESSAGE, &AVPack{Timestamp: getDeltaTime(pack.Timestamp), Payload: payload})
+									err = nc.SendMessage(SEND_AUDIO_MESSAGE, &AVPack{Timestamp: getDeltaTime(pack.Timestamp), Payload: pack.Payload})
 								}
 								subscriber.OnAudio(pack)
 							}
