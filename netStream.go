@@ -105,23 +105,26 @@ func processRtmp(conn net.Conn) {
 					streamPath := nc.appName + "/" + strings.Split(pm.PublishingName, "?")[0]
 					stream = &engine.Stream{Type: "RTMP", StreamPath: streamPath}
 					if stream.Publish() {
-						var abslouteTs uint32
-						vt, at := stream.NewVideoTrack(0), stream.NewAudioTrack(0)
+						absTs := make(map[uint32]uint32)
+						vt := stream.NewVideoTrack(0)
+						at := stream.NewAudioTrack(0)
 						rec_audio = func(msg *Chunk) {
+							fmt.Println("a:", msg.ChunkStreamID)
 							if msg.Timestamp == 0xffffff {
-								abslouteTs += msg.ExtendTimestamp
+								absTs[msg.ChunkStreamID] += msg.ExtendTimestamp
 							} else {
-								abslouteTs += msg.Timestamp // 绝对时间戳
+								absTs[msg.ChunkStreamID] += msg.Timestamp // 绝对时间戳
 							}
-							at.PushByteStream(engine.AudioPack{Timestamp: abslouteTs, Payload: msg.Body})
+							at.PushByteStream(engine.AudioPack{Timestamp: absTs[msg.ChunkStreamID], Payload: msg.Body})
 						}
 						rec_video = func(msg *Chunk) {
+							fmt.Println("v:", msg.ChunkStreamID)
 							if msg.Timestamp == 0xffffff {
-								abslouteTs += msg.ExtendTimestamp
+								absTs[msg.ChunkStreamID] += msg.ExtendTimestamp
 							} else {
-								abslouteTs += msg.Timestamp // 绝对时间戳
+								absTs[msg.ChunkStreamID] += msg.Timestamp // 绝对时间戳
 							}
-							vt.PushByteStream(engine.VideoPack{Timestamp: abslouteTs, Payload: msg.Body})
+							vt.PushByteStream(engine.VideoPack{Timestamp: absTs[msg.ChunkStreamID], Payload: msg.Body})
 						}
 						err = nc.SendMessage(SEND_STREAM_BEGIN_MESSAGE, nil)
 						err = nc.SendMessage(SEND_PUBLISH_START_MESSAGE, newPublishResponseMessageData(nc.streamID, NetStream_Publish_Start, Level_Status))

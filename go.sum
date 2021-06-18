@@ -6,10 +6,14 @@ github.com/Monibuca/engine/v3 v3.0.0-beta3 h1:/co+L2qCRZUq55S0LtYpY9xzOJiUUG3VGy
 github.com/Monibuca/engine/v3 v3.0.0-beta3/go.mod h1:SMgnlwih4pBA/HkTLjKXZFYkv3ukRzFjv65CARRLVIk=
 github.com/Monibuca/engine/v3 v3.0.0-beta5 h1:b27ZQDfvf5dBMZbCSIUXItUwVIFs95fpkAV4xjN7BNE=
 github.com/Monibuca/engine/v3 v3.0.0-beta5/go.mod h1:SMgnlwih4pBA/HkTLjKXZFYkv3ukRzFjv65CARRLVIk=
+github.com/Monibuca/engine/v3 v3.0.0-beta8 h1:bJ3VHKAd8eJO7qOrSQp8Byve2xfCN7/fBDhz4Nz+AM8=
+github.com/Monibuca/engine/v3 v3.0.0-beta8/go.mod h1:ckcxVangFrP8uC7UlhuLJabN4A4NMLYCKEmYHud1Tbk=
 github.com/Monibuca/utils/v3 v3.0.0-alpha5 h1:IOyW/KJSRdRg+TPcgwkHLBynqfNQOV6p3iP7LgXEMFc=
 github.com/Monibuca/utils/v3 v3.0.0-alpha5/go.mod h1:3xYmhQbgAZBHLyIMteUCd1va+1z/xnd72B585mCaT3c=
 github.com/Monibuca/utils/v3 v3.0.0-beta h1:z4p/BSH5J9Ja/gwoDmj1RyN+b0q28Nmn/fqXiwq2hGY=
 github.com/Monibuca/utils/v3 v3.0.0-beta/go.mod h1:mQYP/OMox1tkWP6Qut7pBfARr1TXSRkK662dexQl6kI=
+github.com/Monibuca/utils/v3 v3.0.0-beta1 h1:M+miUm9+ojr6AahACOvVaFs+jc5jHmcUi38Dpe1QGgQ=
+github.com/Monibuca/utils/v3 v3.0.0-beta1/go.mod h1:mQYP/OMox1tkWP6Qut7pBfARr1TXSRkK662dexQl6kI=
 github.com/funny/slab v0.0.0-20180511031532-b1fad5e5d478 h1:Db9StoJ6RZN3YttC0Pm0I4Y5izITRYch3RMbT59BYN0=
 github.com/funny/slab v0.0.0-20180511031532-b1fad5e5d478/go.mod h1:0j1+svBH8ABEIPdUP0AIg4qedsybnXGJBakCEw8cfoo=
 github.com/funny/utest v0.0.0-20161029064919-43870a374500 h1:Z0r1CZnoIWFB/Uiwh1BU5FYmuFe6L5NPi6XWQEmsTRg=
