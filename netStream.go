@@ -109,7 +109,6 @@ func processRtmp(conn net.Conn) {
 						vt := stream.NewVideoTrack(0)
 						at := stream.NewAudioTrack(0)
 						rec_audio = func(msg *Chunk) {
-							fmt.Println("a:", msg.ChunkStreamID)
 							if msg.Timestamp == 0xffffff {
 								absTs[msg.ChunkStreamID] += msg.ExtendTimestamp
 							} else {
@@ -118,7 +117,6 @@ func processRtmp(conn net.Conn) {
 							at.PushByteStream(engine.AudioPack{Timestamp: absTs[msg.ChunkStreamID], Payload: msg.Body})
 						}
 						rec_video = func(msg *Chunk) {
-							fmt.Println("v:", msg.ChunkStreamID)
 							if msg.Timestamp == 0xffffff {
 								absTs[msg.ChunkStreamID] += msg.ExtendTimestamp
 							} else {
