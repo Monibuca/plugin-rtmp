@@ -64,11 +64,6 @@ const (
 )
 
 var (
-	rtmpHeaderPool = &sync.Pool{
-		New: func() interface{} {
-			return new(ChunkHeader)
-		},
-	}
 	chunkMsgPool = &sync.Pool{
 		New: func() interface{} {
 			return new(Chunk)
@@ -77,7 +72,7 @@ var (
 )
 
 func newChunkHeader(messageType byte) *ChunkHeader {
-	head := rtmpHeaderPool.Get().(*ChunkHeader)
+	head := new(ChunkHeader)
 	head.ChunkStreamID = RTMP_CSID_CONTROL
 	if messageType == RTMP_MSG_AMF0_COMMAND {
 		head.ChunkStreamID = RTMP_CSID_COMMAND
@@ -89,7 +84,7 @@ func newChunkHeader(messageType byte) *ChunkHeader {
 	return head
 }
 func newRtmpHeader(chunkID uint32, timestamp uint32, messageLength uint32, messageType byte, messageStreamID uint32, extendTimestamp uint32) *ChunkHeader {
-	head := rtmpHeaderPool.Get().(*ChunkHeader)
+	head := new(ChunkHeader)
 	head.ChunkStreamID = chunkID
 	head.Timestamp = timestamp
 	head.MessageLength = messageLength
@@ -99,16 +94,8 @@ func newRtmpHeader(chunkID uint32, timestamp uint32, messageLength uint32, messa
 	return head
 }
 
-func (h *ChunkHeader) Clone() *ChunkHeader {
-	head := rtmpHeaderPool.Get().(*ChunkHeader)
-	head.ChunkStreamID = h.ChunkStreamID
-	head.Timestamp = h.Timestamp
-	head.MessageLength = h.MessageLength
-	head.MessageTypeID = h.MessageTypeID
-	head.MessageStreamID = h.MessageStreamID
-	head.ExtendTimestamp = h.ExtendTimestamp
-
-	return head
+func (h ChunkHeader) Clone() *ChunkHeader {
+	return &h
 }
 
 type RtmpMessage interface {

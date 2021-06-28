@@ -416,7 +416,7 @@ func (conn *NetConnection) readChunk() (msg *Chunk, err error) {
 	}
 
 	ChunkStreamID := uint32(head & 0x3f) // 0011 1111
-	ChunkType := (head & 0xc0) >> 6      // 1100 0000
+	ChunkType := head >> 6      // 1100 0000
 
 	// 如果块流ID为0,1的话,就需要计算.
 	ChunkStreamID, err = conn.readChunkStreamID(ChunkStreamID)
@@ -438,6 +438,7 @@ func (conn *NetConnection) readChunk() (msg *Chunk, err error) {
 	}
 
 	chunkHead, err := conn.readChunkType(h, ChunkType)
+	
 	if err != nil {
 		return nil, errors.New("get chunk type error :" + err.Error())
 	}
@@ -615,7 +616,7 @@ func (conn *NetConnection) readChunkType(h *ChunkHeader, chunkType byte) (head *
 		}
 	case 3:
 		{
-			h.ChunkType = chunkType
+			//h.ChunkType = chunkType
 		}
 	}
 
