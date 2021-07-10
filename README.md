@@ -1,14 +1,17 @@
-# plugin-rtmp
-the rtmp protocol plugin for monibuca
+# RTMP插件
 
-实现了RTMP Server的基本功能，即接收来自OBS、ffmpeg等推流器的rtmp协议推流。
-实现了RTMP协议的播放，可供rtmp协议播放器拉流播放。
+## 插件地址
 
-# 插件名称
+github.com/Monibuca/plugin-rtmp
 
-RTMP
+## 插件引入
+```go
+import (
+    _ "github.com/Monibuca/plugin-rtmp"
+)
+```
 
-# 配置
+## 默认插件配置
 
 ```toml
 [RTMP]
@@ -16,5 +19,23 @@ ListenAddr = ":1935"
 ChunkSize = 512
 ```
 
-- ListenAddr 代表监听的端口号
-- ChunkSize 分包大小
+- ListenAddr是监听的地址
+- ChunkSize是分块大小
+
+## 插件功能
+
+### 接收RTMP协议的推流
+
+例如通过ffmpeg向m7s进行推流
+
+```bash
+ffmpeg -i **** -f flv rtmp://localhost/live/test
+```
+
+会在m7s内部形成一个名为live/test的流
+
+### 从m7s拉取rtmp协议流
+如果m7s中已经存在live/test流的话就可以用rtmp协议进行播放
+```bash
+ffplay -i rtmp://localhost/live/test
+```

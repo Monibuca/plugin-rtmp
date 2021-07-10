@@ -117,7 +117,7 @@ func processRtmp(conn net.Conn) {
 							} else {
 								absTs[msg.ChunkStreamID] += msg.Timestamp
 							}
-							at.PushByteStream(engine.AudioPack{Timestamp: absTs[msg.ChunkStreamID], Payload: msg.Body})
+							at.PushByteStream(absTs[msg.ChunkStreamID], msg.Body)
 						}
 						rec_video = func(msg *Chunk) {
 							if msg.ChunkType == 0 {
@@ -128,7 +128,7 @@ func processRtmp(conn net.Conn) {
 							} else {
 								absTs[msg.ChunkStreamID] += msg.Timestamp
 							}
-							vt.PushByteStream(engine.VideoPack{Timestamp: absTs[msg.ChunkStreamID], Payload: msg.Body})
+							vt.PushByteStream(absTs[msg.ChunkStreamID], msg.Body)
 						}
 						err = nc.SendMessage(SEND_STREAM_BEGIN_MESSAGE, nil)
 						err = nc.SendMessage(SEND_PUBLISH_START_MESSAGE, newPublishResponseMessageData(nc.streamID, NetStream_Publish_Start, Level_Status))
@@ -142,7 +142,6 @@ func processRtmp(conn net.Conn) {
 					subscriber := engine.Subscriber{
 						Type:             "RTMP",
 						ID:               fmt.Sprintf("%s|%d", conn.RemoteAddr().String(), nc.streamID),
-						ByteStreamFormat: true,
 					}
 					if err = subscriber.Subscribe(streamPath); err == nil {
 						streams[nc.streamID] = &subscriber

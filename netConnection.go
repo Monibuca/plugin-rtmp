@@ -3,10 +3,11 @@ package rtmp
 import (
 	"bufio"
 	"errors"
-	"github.com/Monibuca/engine/v3"
-	"github.com/Monibuca/utils/v3"
 	"io"
 	"log"
+
+	"github.com/Monibuca/engine/v3"
+	"github.com/Monibuca/utils/v3"
 )
 
 const (
@@ -416,7 +417,7 @@ func (conn *NetConnection) readChunk() (msg *Chunk, err error) {
 	}
 
 	ChunkStreamID := uint32(head & 0x3f) // 0011 1111
-	ChunkType := head >> 6      // 1100 0000
+	ChunkType := head >> 6               // 1100 0000
 
 	// 如果块流ID为0,1的话,就需要计算.
 	ChunkStreamID, err = conn.readChunkStreamID(ChunkStreamID)
@@ -438,7 +439,7 @@ func (conn *NetConnection) readChunk() (msg *Chunk, err error) {
 	}
 
 	chunkHead, err := conn.readChunkType(h, ChunkType)
-	
+
 	if err != nil {
 		return nil, errors.New("get chunk type error :" + err.Error())
 	}
@@ -631,8 +632,7 @@ func (conn *NetConnection) RecvMessage() (msg *Chunk, err error) {
 		conn.SendMessage(SEND_ACK_MESSAGE, conn.totalRead)
 	}
 
-	msg, err = conn.readChunk()
-	if err != nil {
+	if msg, err = conn.readChunk(); err != nil {
 		return nil, err
 	}
 
