@@ -164,10 +164,10 @@ func processRtmp(conn net.Conn) {
 								return
 							}
 							err = nc.SendMessage(SEND_FULL_VDIEO_MESSAGE, &AVPack{Payload: vt.ExtraData.Payload})
-							subscriber.OnVideo = func(pack engine.VideoPack) {
+							subscriber.OnVideo = func(ts uint32,pack *engine.VideoPack) {
 								err = nc.SendMessage(SEND_FULL_VDIEO_MESSAGE, &AVPack{Timestamp: 0, Payload: pack.Payload})
-								subscriber.OnVideo = func(pack engine.VideoPack) {
-									err = nc.SendMessage(SEND_VIDEO_MESSAGE, &AVPack{Timestamp: getDeltaTime(pack.Timestamp), Payload: pack.Payload})
+								subscriber.OnVideo = func(ts uint32,pack *engine.VideoPack) {
+									err = nc.SendMessage(SEND_VIDEO_MESSAGE, &AVPack{Timestamp: getDeltaTime(ts), Payload: pack.Payload})
 								}
 							}
 						}
@@ -183,14 +183,14 @@ func processRtmp(conn net.Conn) {
 								}
 								return
 							}
-							subscriber.OnAudio = func(pack engine.AudioPack) {
+							subscriber.OnAudio = func(ts uint32,pack *engine.AudioPack) {
 								if at.CodecID == 10 {
 									err = nc.SendMessage(SEND_FULL_AUDIO_MESSAGE, &AVPack{Payload: at.ExtraData})
 								}
-								subscriber.OnAudio = func(pack engine.AudioPack) {
-									err = nc.SendMessage(SEND_AUDIO_MESSAGE, &AVPack{Timestamp: getDeltaTime(pack.Timestamp), Payload: pack.Payload})
+								subscriber.OnAudio = func(ts uint32,pack *engine.AudioPack) {
+									err = nc.SendMessage(SEND_AUDIO_MESSAGE, &AVPack{Timestamp: getDeltaTime(ts), Payload: pack.Payload})
 								}
-								subscriber.OnAudio(pack)
+								subscriber.OnAudio(ts,pack)
 							}
 						}
 						go subscriber.Play(at, vt)
