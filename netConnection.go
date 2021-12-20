@@ -111,6 +111,8 @@ func (conn *NetConnection) OnConnect() (err error) {
 				return
 			}
 		}
+	} else if msg != nil {
+		utils.Printf("recv MessageTypeID:%d error:%v", msg.MessageTypeID, err)
 	}
 	return
 }
@@ -385,9 +387,9 @@ func (conn *NetConnection) sendAVMessage(ts uint32, payload []byte, isAudio bool
 	// 后面开始,就是直接发送音视频数据,那么直接发送,不需要完整的块(Chunk Basic Header(1) + Chunk Message Header(7))
 	// 当Chunk Type为0时(即Chunk12),
 	if isFirst {
-		need, err = conn.encodeChunk12(head, payload, conn.writeChunkSize)
+		need, err = conn.encodeChunk12(head, payload)
 	} else {
-		need, err = conn.encodeChunk8(head, payload, conn.writeChunkSize)
+		need, err = conn.encodeChunk8(head, payload)
 	}
 	if err != nil {
 		return err
@@ -397,8 +399,8 @@ func (conn *NetConnection) sendAVMessage(ts uint32, payload []byte, isAudio bool
 	}
 
 	// 如果在音视频数据太大,一次发送不完,那么这里进行分割(data + Chunk Basic Header(1))
-	for need != nil && len(need) > 0 {
-		if need, err = conn.encodeChunk1(head, need, conn.writeChunkSize); err != nil {
+	for len(need) > 0 {
+		if need, err = conn.encodeChunk1(head, need); err != nil {
 			return err
 		}
 		if err = conn.Flush(); err != nil {
@@ -471,9 +473,9 @@ func (conn *NetConnection) readChunk() (msg *Chunk, err error) {
 		msg.MsgData = nil
 		msg.Body = currentBody
 		msg.ChunkHeader = chunkHead.Clone()
-		GetRtmpMessage(msg)
+		err = GetRtmpMessage(msg)
 		delete(conn.incompleteRtmpBody, ChunkStreamID)
-		return msg, nil
+		return msg, err
 	}
 
 	return conn.readChunk()
@@ -684,7 +686,7 @@ func (conn *NetConnection) writeMessage(t byte, msg RtmpMessage) error {
 		conn.SendMessage(SEND_PING_REQUEST_MESSAGE, nil)
 	}
 
-	need, err := conn.encodeChunk12(head, body, conn.writeChunkSize)
+	need, err := conn.encodeChunk12(head, body)
 	if err != nil {
 		return err
 	}
@@ -692,7 +694,7 @@ func (conn *NetConnection) writeMessage(t byte, msg RtmpMessage) error {
 		return err
 	}
 	for need != nil && len(need) > 0 {
-		if need, err = conn.encodeChunk1(head, need, conn.writeChunkSize); err != nil {
+		if need, err = conn.encodeChunk1(head, need); err != nil {
 			return err
 		}
 		if err = conn.Flush(); err != nil {

@@ -1,10 +1,11 @@
 package rtmp
 
 import (
+	"log"
+
 	"github.com/Monibuca/engine/v3"
 	. "github.com/Monibuca/utils/v3"
 	. "github.com/logrusorgru/aurora"
-	"log"
 )
 
 var config = struct {
@@ -21,5 +22,5 @@ func init() {
 }
 func run() {
 	Print(Green("server rtmp start at"), BrightBlue(config.ListenAddr))
-	log.Fatal(ListenRtmp(config.ListenAddr))
+	log.Fatal(ListenTCP(config.ListenAddr, processRtmp))
 }

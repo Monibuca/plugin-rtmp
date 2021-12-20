@@ -81,10 +81,7 @@ type ChunkExtendedTimestamp struct {
 // 8  -> ChunkBasicHeader(1) + ChunkMessageHeader(7)
 // 12 -> ChunkBasicHeader(1) + ChunkMessageHeader(11)
 
-func (nc *NetConnection) encodeChunk12(head *ChunkHeader, payload []byte, size int) (need []byte, err error) {
-	if size > RTMP_MAX_CHUNK_SIZE || payload == nil || len(payload) == 0 {
-		return nil, errors.New("chunk error")
-	}
+func (nc *NetConnection) encodeChunk12(head *ChunkHeader, payload []byte) (need []byte, err error) {
 	b := utils.GetSlice(12)
 	//chunkBasicHead
 	b[0] = byte(RTMP_CHUNK_HEAD_12 + head.ChunkBasicHeader.ChunkStreamID)
@@ -102,21 +99,10 @@ func (nc *NetConnection) encodeChunk12(head *ChunkHeader, payload []byte, size i
 		utils.RecycleSlice(b)
 		nc.writeSeqNum += 4
 	}
-	if len(payload) > size {
-		nc.Write(payload[0:size])
-		nc.writeSeqNum += uint32(size)
-		need = payload[size:]
-	} else {
-		nc.Write(payload)
-		nc.writeSeqNum += uint32(len(payload))
-	}
-	return
+	return nc.writeChunk(payload)
 }
 
-func (nc *NetConnection) encodeChunk8(head *ChunkHeader, payload []byte, size int) (need []byte, err error) {
-	if size > RTMP_MAX_CHUNK_SIZE || payload == nil || len(payload) == 0 {
-		return nil, errors.New("chunk error")
-	}
+func (nc *NetConnection) encodeChunk8(head *ChunkHeader, payload []byte) (need []byte, err error) {
 	b := utils.GetSlice(8)
 	//chunkBasicHead
 	b[0] = byte(RTMP_CHUNK_HEAD_8 + head.ChunkBasicHeader.ChunkStreamID)
@@ -126,15 +112,7 @@ func (nc *NetConnection) encodeChunk8(head *ChunkHeader, payload []byte, size in
 	nc.Write(b)
 	utils.RecycleSlice(b)
 	nc.writeSeqNum += 8
-	if len(payload) > size {
-		nc.Write(payload[0:size])
-		nc.writeSeqNum += uint32(size)
-		need = payload[size:]
-	} else {
-		nc.Write(payload)
-		nc.writeSeqNum += uint32(len(payload))
-	}
-	return
+	return nc.writeChunk(payload)
 }
 
 func (nc *NetConnection) encodeChunk4(head *ChunkHeader, payload []byte, size int) (need []byte, err error) {
@@ -159,20 +137,20 @@ func (nc *NetConnection) encodeChunk4(head *ChunkHeader, payload []byte, size in
 	return
 }
 
-func (nc *NetConnection) encodeChunk1(head *ChunkHeader, payload []byte, size int) (need []byte, err error) {
-	if size > RTMP_MAX_CHUNK_SIZE || payload == nil || len(payload) == 0 {
-		return nil, errors.New("chunk error")
-	}
-	chunkBasicHead := byte(RTMP_CHUNK_HEAD_1 + head.ChunkBasicHeader.ChunkStreamID)
-	nc.WriteByte(chunkBasicHead)
+func (nc *NetConnection) encodeChunk1(head *ChunkHeader, payload []byte) (need []byte, err error) {
+	err = nc.WriteByte(byte(RTMP_CHUNK_HEAD_1 + head.ChunkBasicHeader.ChunkStreamID))
 	nc.writeSeqNum++
-	if len(payload) > size {
-		nc.Write(payload[0:size])
-		nc.writeSeqNum += uint32(size)
-		need = payload[size:]
+	return nc.writeChunk(payload)
+}
+
+func (nc *NetConnection) writeChunk(payload []byte) (need []byte, err error) {
+	if payloadLen := len(payload); payloadLen > nc.writeChunkSize {
+		_, err = nc.Write(payload[:nc.writeChunkSize])
+		nc.writeSeqNum += uint32(nc.writeChunkSize)
+		need = payload[nc.writeChunkSize:]
 	} else {
-		nc.Write(payload)
-		nc.writeSeqNum += uint32(len(payload))
+		_, err = nc.Write(payload)
+		nc.writeSeqNum += uint32(payloadLen)
 	}
 	return
 }

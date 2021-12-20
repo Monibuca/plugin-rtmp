@@ -7,45 +7,10 @@ import (
 	"net"
 	"strings"
 	"sync/atomic"
-	"time"
 
 	"github.com/Monibuca/engine/v3"
 	"github.com/Monibuca/utils/v3"
 )
-
-func ListenRtmp(addr string) error {
-	defer log.Println("rtmp server start!")
-	// defer fmt.Println("server start!")
-	listener, err := net.Listen("tcp", addr)
-	if err != nil {
-		return err
-	}
-	var tempDelay time.Duration
-	for {
-		conn, err := listener.Accept()
-		conn.(*net.TCPConn).SetNoDelay(false)
-		if err != nil {
-			if ne, ok := err.(net.Error); ok && ne.Temporary() {
-				if tempDelay == 0 {
-					tempDelay = 5 * time.Millisecond
-				} else {
-					tempDelay *= 2
-				}
-				if max := 1 * time.Second; tempDelay > max {
-					tempDelay = max
-				}
-				fmt.Printf("rtmp: Accept error: %v; retrying in %v", err, tempDelay)
-				time.Sleep(tempDelay)
-				continue
-			}
-			return err
-		}
-
-		tempDelay = 0
-		go processRtmp(conn)
-	}
-	return nil
-}
 
 var gstreamid = uint32(64)
 
@@ -140,8 +105,8 @@ func processRtmp(conn net.Conn) {
 					streamPath := nc.appName + "/" + strings.Split(pm.StreamName, "?")[0]
 					nc.writeChunkSize = config.ChunkSize
 					subscriber := engine.Subscriber{
-						Type:             "RTMP",
-						ID:               fmt.Sprintf("%s|%d", conn.RemoteAddr().String(), nc.streamID),
+						Type: "RTMP",
+						ID:   fmt.Sprintf("%s|%d", conn.RemoteAddr().String(), nc.streamID),
 					}
 					if err = subscriber.Subscribe(streamPath); err == nil {
 						streams[nc.streamID] = &subscriber
@@ -164,9 +129,9 @@ func processRtmp(conn net.Conn) {
 								return
 							}
 							err = nc.SendMessage(SEND_FULL_VDIEO_MESSAGE, &AVPack{Payload: vt.ExtraData.Payload})
-							subscriber.OnVideo = func(ts uint32,pack *engine.VideoPack) {
+							subscriber.OnVideo = func(ts uint32, pack *engine.VideoPack) {
 								err = nc.SendMessage(SEND_FULL_VDIEO_MESSAGE, &AVPack{Timestamp: 0, Payload: pack.Payload})
-								subscriber.OnVideo = func(ts uint32,pack *engine.VideoPack) {
+								subscriber.OnVideo = func(ts uint32, pack *engine.VideoPack) {
 									err = nc.SendMessage(SEND_VIDEO_MESSAGE, &AVPack{Timestamp: getDeltaTime(ts), Payload: pack.Payload})
 								}
 							}
@@ -183,14 +148,14 @@ func processRtmp(conn net.Conn) {
 								}
 								return
 							}
-							subscriber.OnAudio = func(ts uint32,pack *engine.AudioPack) {
+							subscriber.OnAudio = func(ts uint32, pack *engine.AudioPack) {
 								if at.CodecID == 10 {
 									err = nc.SendMessage(SEND_FULL_AUDIO_MESSAGE, &AVPack{Payload: at.ExtraData})
 								}
-								subscriber.OnAudio = func(ts uint32,pack *engine.AudioPack) {
+								subscriber.OnAudio = func(ts uint32, pack *engine.AudioPack) {
 									err = nc.SendMessage(SEND_AUDIO_MESSAGE, &AVPack{Timestamp: getDeltaTime(ts), Payload: pack.Payload})
 								}
-								subscriber.OnAudio(ts,pack)
+								subscriber.OnAudio(ts, pack)
 							}
 						}
 						go subscriber.Play(at, vt)

@@ -2,6 +2,7 @@ package rtmp
 
 import (
 	"bytes"
+	"errors"
 	"log"
 	"sync"
 
@@ -105,12 +106,18 @@ type HaveStreamID interface {
 	GetStreamID() uint32
 }
 
-func GetRtmpMessage(chunk *Chunk) {
+func GetRtmpMessage(chunk *Chunk) error {
 	switch chunk.MessageTypeID {
 	case RTMP_MSG_CHUNK_SIZE, RTMP_MSG_ABORT, RTMP_MSG_ACK, RTMP_MSG_ACK_SIZE:
+		if len(chunk.Body) < 4 {
+			return errors.New("chunk.Body < 4")
+		}
 		chunk.MsgData = Uint32Message(utils.BigEndian.Uint32(chunk.Body))
 	case RTMP_MSG_USER_CONTROL: // RTMP消息类型ID=4, 用户控制消息.客户端或服务端发送本消息通知对方用户的控制事件.
 		{
+			if len(chunk.Body) < 4 {
+				return errors.New("chunk.Body < 4")
+			}
 			base := UserControlMessage{
 				EventType: utils.BigEndian.Uint16(chunk.Body),
 				EventData: chunk.Body[2:],
@@ -154,6 +161,9 @@ func GetRtmpMessage(chunk *Chunk) {
 			}
 		}
 	case RTMP_MSG_BANDWIDTH: // RTMP消息类型ID=6, 置对等端带宽.客户端或服务端发送本消息更新对等端的输出带宽.
+		if len(chunk.Body) < 4 {
+			return errors.New("chunk.Body < 4")
+		}
 		m := &SetPeerBandwidthMessage{
 			AcknowledgementWindowsize: utils.BigEndian.Uint32(chunk.Body),
 		}
@@ -175,6 +185,7 @@ func GetRtmpMessage(chunk *Chunk) {
 	case RTMP_MSG_AGGREGATE:
 	default:
 	}
+	return nil
 }
 
 // 03 00 00 00 00 01 02 14 00 00 00 00 02 00 07 63 6F 6E 6E 65 63 74 00 3F F0 00 00 00 00 00 00 08
