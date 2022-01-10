@@ -14,11 +14,11 @@ var config = struct {
 }{":1935", 512}
 
 func init() {
-	engine.InstallPlugin(&engine.PluginConfig{
+	pc := engine.PluginConfig{
 		Name:   "RTMP",
 		Config: &config,
-		Run:    run,
-	})
+	}
+	pc.Install(run)
 }
 func run() {
 	Print(Green("server rtmp start at"), BrightBlue(config.ListenAddr))
