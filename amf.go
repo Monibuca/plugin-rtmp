@@ -1,14 +1,10 @@
 package rtmp
 
 import (
-	"bytes"
-	"encoding/binary"
-	"errors"
 	"fmt"
 	"log"
-	"reflect"
 
-	"github.com/Monibuca/utils/v3"
+	"github.com/Monibuca/engine/v4/util"
 )
 
 // Action Message Format -- AMF 0
@@ -77,93 +73,23 @@ const (
 
 var END_OBJ = []byte{0, 0, AMF0_END_OBJECT}
 
-type AMFObject interface{}
+type AMFValue any
 
-type AMFObjects map[string]AMFObject
-
-func newAMFObjects() AMFObjects {
-	return make(AMFObjects, 0)
-}
-
-func DecodeAMFObject(obj interface{}, key string) interface{} {
-	if v, ok := obj.(AMFObjects)[key]; ok {
-		return v
-	}
-	return nil
-}
+type AMFObject map[string]AMFValue
 
 type AMF struct {
-	*bytes.Buffer
+	util.Buffer
 }
 
-func newAMFEncoder() *AMF {
-	return &AMF{
-		new(bytes.Buffer),
-	}
-}
+var ObjectEnd = &struct{}{}
+var Undefined = &struct{}{}
 
-func newAMFDecoder(b []byte) *AMF {
-	return &AMF{
-		bytes.NewBuffer(b),
-	}
-}
-func (amf *AMF) readSize() (int, error) {
-	b, err := readBytes(amf.Buffer, 4)
-	size := int(utils.BigEndian.Uint32(b))
-	utils.RecycleSlice(b)
-	return size, err
-}
-func (amf *AMF) readSize16() (int, error) {
-	b, err := readBytes(amf.Buffer, 2)
-	size := int(utils.BigEndian.Uint16(b))
-	utils.RecycleSlice(b)
-	return size, err
-}
-func (amf *AMF) readObjects() (obj []AMFObject, err error) {
-	obj = make([]AMFObject, 0)
-
-	for amf.Len() > 0 {
-		if v, err := amf.decodeObject(); err == nil {
-			obj = append(obj, v)
-		} else {
-			return obj, err
-		}
-	}
-	return
-}
-
-func (amf *AMF) writeObjects(obj []AMFObject) (err error) {
-	for _, v := range obj {
-		switch data := v.(type) {
-		case string:
-			err = amf.writeString(data)
-		case float64:
-			err = amf.writeNumber(data)
-		case bool:
-			err = amf.writeBool(data)
-		case AMFObjects:
-			err = amf.encodeObject(data)
-		case nil:
-			err = amf.writeNull()
-		default:
-			log.Printf("amf encode unknown type:%v", reflect.TypeOf(data).Name())
-		}
-	}
-
-	return
-}
-
-func (amf *AMF) decodeObject() (obj AMFObject, err error) {
+func (amf *AMF) decodeObject() (obj AMFValue) {
 	if amf.Len() == 0 {
-		return nil, errors.New(fmt.Sprintf("no enough bytes, %v/%v", amf.Len(), 1))
+		fmt.Sprintf("no enough bytes, %v/%v", amf.Len(), 1)
+		return nil
 	}
-	var t byte
-	if t, err = amf.ReadByte(); err != nil {
-		return
-	}
-	if err = amf.UnreadByte(); err != nil {
-		return
-	}
+	t := amf.Buffer[0]
 	switch t {
 	case AMF0_NUMBER:
 		return amf.readNumber()
@@ -178,255 +104,183 @@ func (amf *AMF) decodeObject() (obj AMFObject, err error) {
 	case AMF0_NULL:
 		return amf.readNull()
 	case AMF0_UNDEFINED:
-		_, err = amf.ReadByte()
-		return "Undefined", err
+		amf.ReadByte()
+		return Undefined
 	case AMF0_REFERENCE:
 		log.Println("reference-type.(AMF0_REFERENCE)")
 	case AMF0_ECMA_ARRAY:
 		return amf.readECMAArray()
 	case AMF0_END_OBJECT:
-		_, err = amf.ReadByte()
-		return "ObjectEnd", err
+		amf.ReadByte()
+		return ObjectEnd
 	case AMF0_STRICT_ARRAY:
 		return amf.readStrictArray()
 	case AMF0_DATE:
 		return amf.readDate()
-	case AMF0_LONG_STRING:
+	case AMF0_LONG_STRING,
+		AMF0_XML_DOCUMENT:
 		return amf.readLongString()
 	case AMF0_UNSUPPORTED:
 		log.Println("If a type cannot be serialized a special unsupported marker can be used in place of the type.(AMF0_UNSUPPORTED)")
 	case AMF0_RECORDSET:
 		log.Println("This type is not supported and is reserved for future use.(AMF0_RECORDSET)")
-	case AMF0_XML_DOCUMENT:
-		return amf.readLongString()
 	case AMF0_TYPED_OBJECT:
 		log.Println("If a strongly typed object has an alias registered for its class then the type name will also be serialized. Typed objects are considered complex types and reoccurring instances can be sent by reference.(AMF0_TYPED_OBJECT)")
 	case AMF0_AVMPLUS_OBJECT:
 		log.Println("AMF0_AVMPLUS_OBJECT")
 	default:
-		log.Println("Unkonw type.")
+		fmt.Sprintf("Unsupported type %v", t)
 	}
-	return nil, errors.New(fmt.Sprintf("Unsupported type %v", t))
+	return nil
 }
 
-func (amf *AMF) encodeObject(t AMFObjects) (err error) {
-	err = amf.writeObject()
-	defer amf.writeObjectEnd()
+func (amf *AMF) writeObject(t AMFObject) {
+	if t == nil {
+		return
+	}
+	amf.Malloc(1)[0] = AMF0_OBJECT
+	defer amf.Write(END_OBJ)
 	for k, vv := range t {
 		switch vvv := vv.(type) {
 		case string:
-			if err = amf.writeObjectString(k, vvv); err != nil {
-				return
-			}
+			amf.writeObjectString(k, vvv)
 		case float64, uint, float32, int, int16, int32, int64, uint16, uint32, uint64, uint8, int8:
-			if err = amf.writeObjectNumber(k, utils.ToFloat64(vvv)); err != nil {
-				return
-			}
+			amf.writeObjectNumber(k, util.ToFloat64(vv))
 		case bool:
-			if err = amf.writeObjectBool(k, vvv); err != nil {
-				return
-			}
+			amf.writeObjectBool(k, vvv)
 		}
 	}
 	return
 }
 
-func (amf *AMF) readDate() (t uint64, err error) {
-	_, err = amf.ReadByte() // 取出第一个字节 8 Bit == 1 Byte. buf - 1.
-	var b []byte
-	b, err = readBytes(amf.Buffer, 8) // 在取出8个字节,并且读到b中. buf - 8
-	t = utils.BigEndian.Uint64(b)
-	utils.RecycleSlice(b)
-	b, err = readBytes(amf.Buffer, 2)
-	utils.RecycleSlice(b)
-	return t, err
+func (amf *AMF) readDate() uint64 {
+	amf.ReadByte()
+	ret := amf.ReadUint64()
+	amf.ReadN(2) // timezone
+	return ret
 }
 
-func (amf *AMF) readStrictArray() (list []AMFObject, err error) {
-	list = make([]AMFObject, 0)
-	_, err = amf.ReadByte()
-	var size int
-	size, err = amf.readSize()
-	for i := 0; i < size; i++ {
-		if obj, err := amf.decodeObject(); err != nil {
-			return list, err
-		} else {
-			list = append(list, obj)
-		}
+func (amf *AMF) readStrictArray() (list []AMFValue) {
+	amf.ReadByte()
+	size := amf.ReadUint16()
+	for i := uint16(0); i < size; i++ {
+		list = append(list, amf.decodeObject())
 	}
 	return
 }
 
-func (amf *AMF) readECMAArray() (m AMFObjects, err error) {
-	m = make(AMFObjects, 0)
-	_, err = amf.ReadByte()
-	var size int
-	size, err = amf.readSize()
-	for i := 0; i < size; i++ {
-		var k string
-		var v AMFObject
-		if k, err = amf.readString1(); err == nil {
-			if v, err = amf.decodeObject(); err == nil {
-				if k != "" || "ObjectEnd" != v {
-					m[k] = v
-					continue
-				}
-			}
-		}
-		return
-	}
-	return
-}
-
-func (amf *AMF) readString() (str string, err error) {
-	_, err = amf.ReadByte() // 取出第一个字节 8 Bit == 1 Byte. buf - 1.
-	return amf.readString1()
-}
-
-func (amf *AMF) readString1() (str string, err error) {
-	var size int
-	size, err = amf.readSize16()
-	var b []byte
-	b, err = readBytes(amf.Buffer, size) // 读取全部数据,读取长度为l,因为这两个字节(l变量)保存的是数据长度
-	str = string(b)
-	utils.RecycleSlice(b)
-	return
-}
-
-func (amf *AMF) readLongString() (str string, err error) {
-	_, err = amf.ReadByte()
-	var size int
-	size, err = amf.readSize()
-	var b []byte
-	b, err = readBytes(amf.Buffer, size) // 读取全部数据,读取长度为l,因为这两个字节(l变量)保存的是数据长度
-	str = string(b)
-	utils.RecycleSlice(b)
-	return
-}
-
-func (amf *AMF) readNull() (AMFObject, error) {
-	_, err := amf.ReadByte()
-	return nil, err
-}
-
-func (amf *AMF) readNumber() (num float64, err error) {
-	// binary.read 会读取8个字节(float64),如果小于8个字节返回一个`io.ErrUnexpectedEOF`,如果大于就会返回`io.ErrShortBuffer`,读取完毕会有`io.EOF`
-	_, err = amf.ReadByte()
-	err = binary.Read(amf, binary.BigEndian, &num)
-	return num, err
-}
-
-func (amf *AMF) readBool() (f bool, err error) {
-	_, err = amf.ReadByte()
-	if b, err := amf.ReadByte(); err == nil {
-		return b == 1, nil
-	}
-	return
-}
-
-func (amf *AMF) readObject() (m AMFObjects, err error) {
-	_, err = amf.ReadByte()
-	m = make(AMFObjects, 0)
-	var k string
-	var v AMFObject
-	for {
-		if k, err = amf.readString1(); err != nil {
-			break
-		}
-		if v, err = amf.decodeObject(); err != nil {
-			break
-		}
-		if k == "" && "ObjectEnd" == v {
-			break
+func (amf *AMF) readECMAArray() (m AMFObject) {
+	m = make(AMFObject, 0)
+	amf.ReadByte()
+	size := amf.ReadUint16()
+	for i := uint16(0); i < size; i++ {
+		k := amf.readString1()
+		v := amf.decodeObject()
+		if k == "" && v == ObjectEnd {
+			return
 		}
 		m[k] = v
 	}
-	return m, err
-}
-
-func readBytes(buf *bytes.Buffer, length int) (b []byte, err error) {
-	b = utils.GetSlice(length)
-	if i, _ := buf.Read(b); length != i {
-		err = errors.New(fmt.Sprintf("not enough bytes,%v/%v", buf.Len(), length))
-	}
 	return
 }
-func (amf *AMF) writeSize16(l int) (err error) {
-	b := utils.GetSlice(2)
-	defer utils.RecycleSlice(b)
-	utils.BigEndian.PutUint16(b, uint16(l))
-	_, err = amf.Write(b)
-	return
-}
-func (amf *AMF) writeString(value string) error {
-	v := []byte(value)
-	err := amf.WriteByte(byte(AMF0_STRING))
-	if err != nil {
-		return err
+
+func (amf *AMF) readString() string {
+	if amf.Len() == 0 {
+		return ""
 	}
-	if err = amf.writeSize16(len(v)); err != nil {
-		return err
-	}
-	_, err = amf.Write(v)
-	return err
+	amf.ReadByte()
+	return amf.readString1()
 }
 
-func (amf *AMF) writeNull() error {
-	return amf.WriteByte(byte(AMF0_NULL))
+func (amf *AMF) readString1() string {
+	return string(amf.ReadN(int(amf.ReadUint16())))
 }
 
-func (amf *AMF) writeBool(b bool) error {
-	if err := amf.WriteByte(byte(AMF0_BOOLEAN)); err != nil {
-		return err
+func (amf *AMF) readLongString() string {
+	amf.ReadByte()
+	return string(amf.ReadN(int(amf.ReadUint32())))
+}
+
+func (amf *AMF) readNull() any {
+	amf.ReadByte()
+	return nil
+}
+
+func (amf *AMF) readNumber() (num float64) {
+	if amf.Len() == 0 {
+		return 0
 	}
+	amf.ReadByte()
+	return amf.ReadFloat64()
+}
+
+func (amf *AMF) readBool() bool {
+	if amf.Len() == 0 {
+		return false
+	}
+	amf.ReadByte()
+	return amf.ReadByte() == 1
+}
+
+func (amf *AMF) readObject() (m AMFObject) {
+	if amf.Len() == 0 {
+		return nil
+	}
+	amf.ReadByte()
+	m = make(AMFObject, 0)
+	for {
+		k := amf.readString1()
+		v := amf.decodeObject()
+		if k == "" && v == ObjectEnd {
+			return
+		}
+		m[k] = v
+	}
+}
+
+func (amf *AMF) writeSize16(l int) {
+	util.PutBE(amf.Malloc(2), l)
+}
+
+func (amf *AMF) writeString(value string) {
+	amf.WriteUint8(AMF0_STRING)
+	amf.writeSize16(len(value))
+	amf.WriteString(value)
+}
+
+func (amf *AMF) writeNull() {
+	amf.WriteUint8(AMF0_NULL)
+}
+
+func (amf *AMF) writeBool(b bool) {
+	amf.WriteUint8(AMF0_BOOLEAN)
 	if b {
-		return amf.WriteByte(byte(1))
+		amf.WriteUint8(1)
 	}
-	return amf.WriteByte(byte(0))
+	amf.WriteUint8(0)
 }
 
-func (amf *AMF) writeNumber(b float64) error {
-	if err := amf.WriteByte(byte(AMF0_NUMBER)); err != nil {
-		return err
-	}
-	return binary.Write(amf, binary.BigEndian, b)
+func (amf *AMF) writeNumber(b float64) {
+	amf.WriteUint8(AMF0_NUMBER)
+	amf.WriteFloat64(b)
 }
 
-func (amf *AMF) writeObject() error {
-	return amf.WriteByte(byte(AMF0_OBJECT))
-}
-func (amf *AMF) writeKey(key string) (err error) {
-	keyByte := []byte(key)
-	if err = amf.writeSize16(len(keyByte)); err != nil {
-		return
-	}
-	if _, err = amf.Write(keyByte); err != nil {
-		return
-	}
-	return
-}
-func (amf *AMF) writeObjectString(key, value string) error {
-	if err := amf.writeKey(key); err != nil {
-		return err
-	}
-	return amf.writeString(value)
+func (amf *AMF) writeKey(key string) {
+	amf.writeSize16(len(key))
+	amf.WriteString(key)
 }
 
-func (amf *AMF) writeObjectBool(key string, f bool) error {
-	if err := amf.writeKey(key); err != nil {
-		return err
-	}
-	return amf.writeBool(f)
+func (amf *AMF) writeObjectString(key, value string) {
+	amf.writeKey(key)
+	amf.writeString(value)
 }
 
-func (amf *AMF) writeObjectNumber(key string, value float64) error {
-	if err := amf.writeKey(key); err != nil {
-		return err
-	}
-	return amf.writeNumber(value)
+func (amf *AMF) writeObjectBool(key string, f bool) {
+	amf.writeKey(key)
+	amf.writeBool(f)
 }
 
-func (amf *AMF) writeObjectEnd() error {
-	_, err := amf.Write(END_OBJ)
-	return err
+func (amf *AMF) writeObjectNumber(key string, value float64) {
+	amf.writeKey(key)
+	amf.writeNumber(value)
 }

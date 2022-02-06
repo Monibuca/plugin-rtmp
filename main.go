@@ -1,26 +1,52 @@
 package rtmp
 
 import (
+	"context"
 	"log"
 
-	"github.com/Monibuca/engine/v3"
-	. "github.com/Monibuca/utils/v3"
+	. "github.com/Monibuca/engine/v4"
+	"github.com/Monibuca/engine/v4/util"
 	. "github.com/logrusorgru/aurora"
 )
 
-var config = struct {
+type RTMPConfig struct {
+	Publish    PublishConfig
+	Subscribe  SubscribeConfig
 	ListenAddr string
 	ChunkSize  int
-}{":1935", 512}
+	context.Context
+	cancel context.CancelFunc
+}
+
+var config = &RTMPConfig{
+	Publish:    DefaultPublishConfig,
+	Subscribe:  DefaultSubscribeConfig,
+	ChunkSize:  4096,
+	ListenAddr: ":1935",
+}
+
+func (cfg *RTMPConfig) Update(override map[string]any) {
+	if cfg.cancel == nil || (override != nil && override["ListenAddr"] != nil) {
+		start()
+	}
+}
 
 func init() {
-	pc := engine.PluginConfig{
-		Name:   "RTMP",
-		Config: &config,
-	}
-	pc.Install(run)
+	InstallPlugin(config)
 }
-func run() {
-	Print(Green("server rtmp start at"), BrightBlue(config.ListenAddr))
-	log.Fatal(ListenTCP(config.ListenAddr, processRtmp))
+
+func start() {
+	if config.cancel == nil {
+		util.Print(Green("server rtmp start at"), BrightBlue(config.ListenAddr))
+	} else {
+		config.cancel()
+		util.Print(Green("server rtmp restart at"), BrightBlue(config.ListenAddr))
+	}
+	config.Context, config.cancel = context.WithCancel(Ctx)
+	err := util.ListenTCP(config.ListenAddr, config)
+	if err == context.Canceled {
+		log.Println(err)
+	} else {
+		log.Fatal(err)
+	}
 }

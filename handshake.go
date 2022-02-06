@@ -1,15 +1,14 @@
 package rtmp
 
 import (
-	"bufio"
 	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"math/rand"
+	"net"
 )
 
 const (
@@ -70,8 +69,8 @@ func ReadBuf(r io.Reader, length int) (buf []byte) {
 	return
 }
 
-func Handshake(brw *bufio.ReadWriter) error {
-	C0C1 := ReadBuf(brw, 1536+1)
+func (nc *NetConnection) Handshake() error {
+	C0C1 := ReadBuf(nc.Reader, 1536+1)
 	if C0C1[0] != RTMP_HANDSHAKE_VERSION {
 		return errors.New("C0 Error")
 	}
@@ -85,33 +84,24 @@ func Handshake(brw *bufio.ReadWriter) error {
 	temp := C1[4] & 0xff
 
 	if temp == 0 {
-		return simple_handshake(brw, C1)
+		return nc.simple_handshake(C1)
 	}
 
-	return complex_handshake(brw, C1)
+	return nc.complex_handshake(C1)
 }
 
-func simple_handshake(brw *bufio.ReadWriter, C1 []byte) error {
-	var S0 byte
-	S0 = 0x03
-	S1 := make([]byte, 1536-4)
-	S2 := C1
-	S1_Time := uint32(0)
-
-	buf := new(bytes.Buffer)
-	buf.WriteByte(S0)
-	binary.Write(buf, binary.BigEndian, S1_Time)
-	buf.Write(S1)
-	buf.Write(S2)
-
-	brw.Write(buf.Bytes())
-	brw.Flush() // Don't forget to flush
-
-	ReadBuf(brw, 1536)
+func (nc *NetConnection) simple_handshake(C1 []byte) error {
+	S1 := make([]byte, 1536+1)
+	S1[0] = RTMP_HANDSHAKE_VERSION
+	buffer := net.Buffers{S1, C1}
+	buffer.WriteTo(nc)
+	if C2 := ReadBuf(nc.Reader, 1536); bytes.Compare(C2, S1[1:]) != 0 {
+		return errors.New("C2 Error")
+	}
 	return nil
 }
 
-func complex_handshake(brw *bufio.ReadWriter, C1 []byte) error {
+func (nc *NetConnection) complex_handshake(C1 []byte) error {
 	// 验证客户端,digest偏移位置和scheme由客户端定.
 	scheme, challenge, digest, ok, err := validateClient(C1)
 	if err != nil {
@@ -123,10 +113,6 @@ func complex_handshake(brw *bufio.ReadWriter, C1 []byte) error {
 	if !ok {
 		return errors.New("validateClient failed")
 	}
-
-	// s0
-	var S0 byte
-	S0 = 0x03
 
 	// s1
 	S1 := create_S1()
@@ -163,16 +149,10 @@ func complex_handshake(brw *bufio.ReadWriter, C1 []byte) error {
 		return err
 	}
 
-	buffer := new(bytes.Buffer)
-	buffer.WriteByte(S0)
-	buffer.Write(S1)
-	buffer.Write(S2_Random)
-	buffer.Write(S2_Digest)
+	buffer := net.Buffers{[]byte{RTMP_HANDSHAKE_VERSION}, S1, S2_Random, S2_Digest}
+	buffer.WriteTo(nc)
 
-	brw.Write(buffer.Bytes())
-	brw.Flush()
-
-	ReadBuf(brw, 1536)
+	ReadBuf(nc.Reader, 1536)
 	return nil
 }
 
@@ -338,8 +318,5 @@ func cerate_S2() []byte {
 		s2_Random[i] = byte(rand.Int() % 256)
 	}
 
-	buf := new(bytes.Buffer)
-	buf.Write(s2_Random)
-
-	return buf.Bytes()
+	return s2_Random
 }

@@ -1,12 +1,11 @@
 package rtmp
 
 import (
-	"bytes"
+	"encoding/binary"
 	"errors"
 	"log"
-	"sync"
 
-	"github.com/Monibuca/utils/v3"
+	"github.com/Monibuca/engine/v4/util"
 )
 
 const (
@@ -64,13 +63,6 @@ const (
 	RTMP_CSID_VIDEO   = 0x05
 )
 
-var (
-	chunkMsgPool = &sync.Pool{
-		New: func() interface{} {
-			return new(Chunk)
-		},
-	}
-)
 
 func newChunkHeader(messageType byte) *ChunkHeader {
 	head := new(ChunkHeader)
@@ -107,20 +99,21 @@ type HaveStreamID interface {
 }
 
 func GetRtmpMessage(chunk *Chunk) error {
-	switch chunk.MessageTypeID {
+	body := util.Buffer(chunk.Body)
+ 	switch chunk.MessageTypeID {
 	case RTMP_MSG_CHUNK_SIZE, RTMP_MSG_ABORT, RTMP_MSG_ACK, RTMP_MSG_ACK_SIZE:
 		if len(chunk.Body) < 4 {
 			return errors.New("chunk.Body < 4")
 		}
-		chunk.MsgData = Uint32Message(utils.BigEndian.Uint32(chunk.Body))
+		chunk.MsgData = Uint32Message(body.ReadUint32())
 	case RTMP_MSG_USER_CONTROL: // RTMP消息类型ID=4, 用户控制消息.客户端或服务端发送本消息通知对方用户的控制事件.
 		{
 			if len(chunk.Body) < 4 {
 				return errors.New("chunk.Body < 4")
 			}
 			base := UserControlMessage{
-				EventType: utils.BigEndian.Uint16(chunk.Body),
-				EventData: chunk.Body[2:],
+				EventType: body.ReadUint16(),
+				EventData: body,
 			}
 			switch base.EventType {
 			case RTMP_USER_STREAM_BEGIN: // 服务端向客户端发送本事件通知对方一个流开始起作用可以用于通讯.在默认情况下,服务端在成功地从客户端接收连接命令之后发送本事件,事件ID为0.事件数据是表示开始起作用的流的ID.
@@ -130,28 +123,28 @@ func GetRtmpMessage(chunk *Chunk) error {
 				}
 				if len(base.EventData) >= 4 {
 					//服务端在成功地从客户端接收连接命令之后发送本事件,事件ID为0.事件数据是表示开始起作用的流的ID.
-					m.StreamID = utils.BigEndian.Uint32(base.EventData)
+					m.StreamID = body.ReadUint32()
 				}
 				chunk.MsgData = m
 			case RTMP_USER_STREAM_EOF, RTMP_USER_STREAM_DRY, RTMP_USER_STREAM_IS_RECORDED: // 服务端向客户端发送本事件通知客户端,数据回放完成.果没有发行额外的命令,就不再发送数据.客户端丢弃从流中接收的消息.4字节的事件数据表示,回放结束的流的ID.
 				m := &StreamIDMessage{
 					UserControlMessage: base,
-					StreamID:           utils.BigEndian.Uint32(base.EventData),
+					StreamID:           body.ReadUint32(),
 				}
 				chunk.MsgData = m
 			case RTMP_USER_SET_BUFFLEN: // 客户端向服务端发送本事件,告知对方自己存储一个流的数据的缓存的长度(毫秒单位).当服务端开始处理一个流得时候发送本事件.事件数据的头四个字节表示流ID,后4个字节表示缓存长度(毫秒单位).
 				m := &SetBufferMessage{
 					StreamIDMessage: StreamIDMessage{
 						UserControlMessage: base,
-						StreamID:           utils.BigEndian.Uint32(base.EventData),
+						StreamID:           body.ReadUint32(),
 					},
-					Millisecond: utils.BigEndian.Uint32(base.EventData[4:]),
+					Millisecond: body.ReadUint32(),
 				}
 				chunk.MsgData = m
 			case RTMP_USER_PING_REQUEST: // 服务端通过本事件测试客户端是否可达.事件数据是4个字节的事件戳.代表服务调用本命令的本地时间.客户端在接收到kMsgPingRequest之后返回kMsgPingResponse事件
 				m := &PingRequestMessage{
 					UserControlMessage: base,
-					Timestamp:          utils.BigEndian.Uint32(base.EventData),
+					Timestamp:          body.ReadUint32(),
 				}
 				chunk.MsgData = m
 			case RTMP_USER_PING_RESPONSE, RTMP_USER_EMPTY: // 客户端向服务端发送本消息响应ping请求.事件数据是接kMsgPingRequest请求的时间.
@@ -165,10 +158,10 @@ func GetRtmpMessage(chunk *Chunk) error {
 			return errors.New("chunk.Body < 4")
 		}
 		m := &SetPeerBandwidthMessage{
-			AcknowledgementWindowsize: utils.BigEndian.Uint32(chunk.Body),
+			AcknowledgementWindowsize: body.ReadUint32(),
 		}
-		if len(chunk.Body) > 4 {
-			m.LimitType = chunk.Body[4]
+		if body.Len() > 0 {
+			m.LimitType = body[0]
 		}
 		chunk.MsgData = m
 	case RTMP_MSG_EDGE: // RTMP消息类型ID=7, 用于边缘服务与源服务器.
@@ -207,86 +200,86 @@ func GetRtmpMessage(chunk *Chunk) error {
 // object类型要复杂点.
 // 第一个byte是03表示object,其后跟的是N个(key+value).最后以00 00 09表示object结束
 func decodeCommandAMF0(chunk *Chunk) {
-	amf := newAMFDecoder(chunk.Body) // rtmp_amf.go, amf 是 bytes类型, 将rtmp body(payload)放到bytes.Buffer(amf)中去.
-	cmd := readString(amf)           // rtmp_amf.go, 将payload的bytes类型转换成string类型.
+	amf := AMF{chunk.Body}  // rtmp_amf.go, amf 是 bytes类型, 将rtmp body(payload)放到bytes.Buffer(amf)中去.
+	cmd := amf.readString() // rtmp_amf.go, 将payload的bytes类型转换成string类型.
 	cmdMsg := CommandMessage{
 		cmd,
-		readTransactionId(amf),
+		uint64(amf.readNumber()),
 	}
 	switch cmd {
 	case "connect", "call":
 		chunk.MsgData = &CallMessage{
 			cmdMsg,
-			readObject(amf),
-			readObject(amf),
+			amf.readObject(),
+			amf.readObject(),
 		}
 	case "createStream":
 		amf.readNull()
 		chunk.MsgData = &CreateStreamMessage{
-			cmdMsg, readObject(amf),
+			cmdMsg, amf.readObject(),
 		}
 	case "play":
 		amf.readNull()
 		chunk.MsgData = &PlayMessage{
 			cmdMsg,
-			readString(amf),
-			readNumber(amf),
-			readNumber(amf),
-			readBool(amf),
+			amf.readString(),
+			uint64(amf.readNumber()),
+			uint64(amf.readNumber()),
+			amf.readBool(),
 		}
 	case "play2":
 		amf.readNull()
 		chunk.MsgData = &Play2Message{
 			cmdMsg,
-			readNumber(amf),
-			readString(amf),
-			readString(amf),
-			readNumber(amf),
-			readString(amf),
+			uint64(amf.readNumber()),
+			amf.readString(),
+			amf.readString(),
+			uint64(amf.readNumber()),
+			amf.readString(),
 		}
 	case "publish":
 		amf.readNull()
 		chunk.MsgData = &PublishMessage{
 			cmdMsg,
-			readString(amf),
-			readString(amf),
+			amf.readString(),
+			amf.readString(),
 		}
 	case "pause":
 		amf.readNull()
 		chunk.MsgData = &PauseMessage{
 			cmdMsg,
-			readBool(amf),
-			readNumber(amf),
+			amf.readBool(),
+			uint64(amf.readNumber()),
 		}
 	case "seek":
 		amf.readNull()
 		chunk.MsgData = &SeekMessage{
 			cmdMsg,
-			readNumber(amf),
+			uint64(amf.readNumber()),
 		}
 	case "deleteStream", "closeStream":
 		amf.readNull()
 		chunk.MsgData = &CURDStreamMessage{
 			cmdMsg,
-			uint32(readNumber(amf)),
+			uint32(amf.readNumber()),
 		}
 	case "releaseStream":
 		amf.readNull()
 		chunk.MsgData = &ReleaseStreamMessage{
 			cmdMsg,
-			readString(amf),
+			amf.readString(),
 		}
 	case "receiveAudio", "receiveVideo":
 		amf.readNull()
 		chunk.MsgData = &ReceiveAVMessage{
 			cmdMsg,
-			readBool(amf),
+			amf.readBool(),
 		}
 	case "_result", "_error", "onStatus":
 		chunk.MsgData = &ResponseMessage{
 			cmdMsg,
-			readObject(amf),
-			readObject(amf), "",
+			amf.readObject(),
+			amf.readObject(), "",
 		}
 	case "FCPublish", "FCUnpublish":
 	default:
@@ -297,28 +290,6 @@ func decodeCommandAMF0(chunk *Chunk) {
 func decodeCommandAMF3(chunk *Chunk) {
 	chunk.Body = chunk.Body[1:]
 	decodeCommandAMF0(chunk)
-}
-
-func readTransactionId(amf *AMF) uint64 {
-	v, _ := amf.readNumber()
-	return uint64(v)
-}
-func readString(amf *AMF) string {
-	v, _ := amf.readString()
-	return v
-}
-func readNumber(amf *AMF) uint64 {
-	v, _ := amf.readNumber()
-	return uint64(v)
-}
-func readBool(amf *AMF) bool {
-	v, _ := amf.readBool()
-	return v
-}
-
-func readObject(amf *AMF) AMFObjects {
-	v, _ := amf.readObject()
-	return v
 }
 
 /* Command Message */
@@ -333,12 +304,13 @@ type Commander interface {
 func (cmd *CommandMessage) GetCommand() *CommandMessage {
 	return cmd
 }
+
 func (msg *CommandMessage) Encode() (b []byte) {
-	amf := newAMFEncoder()
+	var amf AMF
 	amf.writeString(msg.CommandName)
 	amf.writeNumber(float64(msg.TransactionId))
 	amf.writeNull()
-	return amf.Bytes()
+	return amf.Buffer
 }
 
 // Protocol control message 1.
@@ -349,7 +321,7 @@ type Uint32Message uint32
 
 func (msg Uint32Message) Encode() (b []byte) {
 	b = make([]byte, 4)
-	utils.BigEndian.PutUint32(b, uint32(msg))
+	binary.BigEndian.PutUint32(b, uint32(msg))
 	return b
 }
 
@@ -376,7 +348,7 @@ type SetPeerBandwidthMessage struct {
 
 func (msg *SetPeerBandwidthMessage) Encode() (b []byte) {
 	b = make([]byte, 5)
-	utils.BigEndian.PutUint32(b, msg.AcknowledgementWindowsize)
+	binary.BigEndian.PutUint32(b, msg.AcknowledgementWindowsize)
 	b[4] = msg.LimitType
 	return
 }
@@ -404,30 +376,27 @@ type MetadataMessage struct {
 // The called RPC name is passed as a parameter to the call command.
 type CallMessage struct {
 	CommandMessage
-	Object   interface{} `json:",omitempty"`
-	Optional interface{} `json:",omitempty"`
+	Object   AMFObject `json:",omitempty"`
+	Optional AMFObject `json:",omitempty"`
 }
 
 func (msg *CallMessage) Encode() []byte {
-	amf := newAMFEncoder()
+	var amf AMF
 	amf.writeString(msg.CommandName)
 	amf.writeNumber(float64(msg.TransactionId))
-
-	if msg.Object != nil {
-		amf.encodeObject(msg.Object.(AMFObjects))
-	}
-	if msg.Optional != nil {
-		amf.encodeObject(msg.Optional.(AMFObjects))
-	}
-
-	return amf.Bytes()
+	amf.writeObject(msg.Object)
+	amf.writeObject(msg.Optional)
+	return amf.Buffer
 }
 
 func (msg *CallMessage) Encode3() []byte {
-	buf := new(bytes.Buffer)
-	buf.WriteByte(0)
-	buf.Write(msg.Encode())
-	return buf.Bytes()
+	var amf AMF
+	amf.WriteUint8(0)
+	amf.writeString(msg.CommandName)
+	amf.writeNumber(float64(msg.TransactionId))
+	amf.writeObject(msg.Object)
+	amf.writeObject(msg.Optional)
+	return amf.Buffer
 }
 
 // Create Stream Message.
@@ -436,18 +405,15 @@ func (msg *CallMessage) Encode3() []byte {
 
 type CreateStreamMessage struct {
 	CommandMessage
-	Object interface{}
+	Object AMFObject
 }
 
 func (msg *CreateStreamMessage) Encode() []byte {
-	amf := newAMFEncoder()
+	var amf AMF
 	amf.writeString(msg.CommandName)
 	amf.writeNumber(float64(msg.TransactionId))
-
-	if msg.Object != nil {
-		amf.encodeObject(msg.Object.(AMFObjects))
-	}
-	return amf.Bytes()
+	amf.writeObject(msg.Object)
+	return amf.Buffer
 }
 
 /*
@@ -493,7 +459,7 @@ type PlayMessage struct {
 // Reset -> 可选的布尔值或者数字定义了是否对以前的播放列表进行 flush
 
 func (msg *PlayMessage) Encode() []byte {
-	amf := newAMFEncoder()
+	var amf AMF
 	amf.writeString(msg.CommandName)
 	amf.writeNumber(float64(msg.TransactionId))
 	amf.writeNull()
@@ -507,7 +473,7 @@ func (msg *PlayMessage) Encode() []byte {
 	}
 
 	amf.writeBool(msg.Rest)
-	return amf.Bytes()
+	return amf.Buffer
 }
 
 /*
@@ -615,23 +581,17 @@ func (msg *PauseMessage) Encode0() {
 //
 type ResponseConnectMessage struct {
 	CommandMessage
-	Properties interface{} `json:",omitempty"`
-	Infomation interface{} `json:",omitempty"`
+	Properties AMFObject `json:",omitempty"`
+	Infomation AMFObject `json:",omitempty"`
 }
 
 func (msg *ResponseConnectMessage) Encode() []byte {
-	amf := newAMFEncoder()
+	var amf AMF
 	amf.writeString(msg.CommandName)
 	amf.writeNumber(float64(msg.TransactionId))
-
-	if msg.Properties != nil {
-		amf.encodeObject(msg.Properties.(AMFObjects))
-	}
-	if msg.Infomation != nil {
-		amf.encodeObject(msg.Infomation.(AMFObjects))
-	}
-
-	return amf.Bytes()
+	amf.writeObject(msg.Properties)
+	amf.writeObject(msg.Infomation)
+	return amf.Buffer
 }
 
 /*
@@ -642,23 +602,17 @@ func (msg *ResponseConnectMessage) Encode3() {
 //
 type ResponseCallMessage struct {
 	CommandMessage
-	Object   interface{}
-	Response interface{}
+	Object   AMFObject
+	Response AMFObject
 }
 
 func (msg *ResponseCallMessage) Encode0() []byte {
-	amf := newAMFEncoder()
+	var amf AMF
 	amf.writeString(msg.CommandName)
 	amf.writeNumber(float64(msg.TransactionId))
-
-	if msg.Object != nil {
-		amf.encodeObject(msg.Object.(AMFObjects))
-	}
-	if msg.Response != nil {
-		amf.encodeObject(msg.Response.(AMFObjects))
-	}
-
-	return amf.Bytes()
+	amf.writeObject(msg.Object)
+	amf.writeObject(msg.Response)
+	return amf.Buffer
 }
 
 //
@@ -671,12 +625,12 @@ type ResponseCreateStreamMessage struct {
 }
 
 func (msg *ResponseCreateStreamMessage) Encode() []byte {
-	amf := newAMFEncoder() // rtmp_amf.go
+	var amf AMF
 	amf.writeString(msg.CommandName)
 	amf.writeNumber(float64(msg.TransactionId))
 	amf.writeNull()
 	amf.writeNumber(float64(msg.StreamId))
-	return amf.Bytes()
+	return amf.Buffer
 }
 
 /*
@@ -684,18 +638,11 @@ func (msg *ResponseCreateStreamMessage) Encode3() {
 }*/
 
 func (msg *ResponseCreateStreamMessage) Decode0(chunk *Chunk) {
-	amf := newAMFDecoder(chunk.Body)
-	if obj, err := amf.decodeObject(); err == nil {
-		msg.CommandName = obj.(string)
-	}
-	if obj, err := amf.decodeObject(); err == nil {
-		msg.TransactionId = uint64(obj.(float64))
-	}
-
+	amf := AMF{chunk.Body}
+	msg.CommandName = amf.decodeObject().(string)
+	msg.TransactionId = uint64(amf.decodeObject().(float64))
 	amf.decodeObject()
-	if obj, err := amf.decodeObject(); err == nil {
-		msg.StreamId = uint32(obj.(float64))
-	}
+	msg.StreamId = uint32(amf.decodeObject().(float64))
 }
 func (msg *ResponseCreateStreamMessage) Decode3(chunk *Chunk) {
 	chunk.Body = chunk.Body[1:]
@@ -707,7 +654,7 @@ func (msg *ResponseCreateStreamMessage) Decode3(chunk *Chunk) {
 //
 type ResponsePlayMessage struct {
 	CommandMessage
-	Object      interface{} `json:",omitempty"`
+	Object      AMFObject `json:",omitempty"`
 	Description string
 	StreamID    uint32
 }
@@ -716,15 +663,13 @@ func (msg *ResponsePlayMessage) GetStreamID() uint32 {
 	return msg.StreamID
 }
 func (msg *ResponsePlayMessage) Encode() []byte {
-	amf := newAMFEncoder() // rtmp_amf.go
+	var amf AMF
 	amf.writeString(msg.CommandName)
 	amf.writeNumber(float64(msg.TransactionId))
 	amf.writeNull()
-	if msg.Object != nil {
-		amf.encodeObject(msg.Object.(AMFObjects))
-	}
+	amf.writeObject(msg.Object)
 	amf.writeString(msg.Description)
-	return amf.Bytes()
+	return amf.Buffer
 }
 
 /*
@@ -732,20 +677,10 @@ func (msg *ResponsePlayMessage) Encode3() {
 }*/
 
 func (msg *ResponsePlayMessage) Decode0(chunk *Chunk) {
-	amf := newAMFDecoder(chunk.Body)
-	if obj, err := amf.decodeObject(); err == nil {
-		msg.CommandName = obj.(string)
-	}
-	if obj, err := amf.decodeObject(); err == nil {
-		msg.TransactionId = uint64(obj.(float64))
-	}
-
-	obj, err := amf.decodeObject()
-	if err == nil && obj != nil {
-		msg.Object = obj
-	} else if obj, err := amf.decodeObject(); err == nil {
-		msg.Object = obj
-	}
+	amf := AMF{chunk.Body}
+	msg.CommandName = amf.decodeObject().(string)
+	msg.TransactionId = uint64(amf.decodeObject().(float64))
+	msg.Object = amf.decodeObject().(AMFObject)
 }
 func (msg *ResponsePlayMessage) Decode3(chunk *Chunk) {
 	chunk.Body = chunk.Body[1:]
@@ -757,8 +692,8 @@ func (msg *ResponsePlayMessage) Decode3(chunk *Chunk) {
 //
 type ResponsePublishMessage struct {
 	CommandMessage
-	Properties interface{} `json:",omitempty"`
-	Infomation interface{} `json:",omitempty"`
+	Properties AMFObject `json:",omitempty"`
+	Infomation AMFObject `json:",omitempty"`
 	StreamID   uint32
 }
 
@@ -772,19 +707,13 @@ func (msg *ResponsePublishMessage) GetStreamID() uint32 {
 // 信息 -> level, code, description
 
 func (msg *ResponsePublishMessage) Encode() []byte {
-	amf := newAMFEncoder()
+	var amf AMF
 	amf.writeString(msg.CommandName)
 	amf.writeNumber(float64(msg.TransactionId))
 	amf.writeNull()
-
-	if msg.Properties != nil {
-		amf.encodeObject(msg.Properties.(AMFObjects))
-	}
-	if msg.Infomation != nil {
-		amf.encodeObject(msg.Infomation.(AMFObjects))
-	}
-
-	return amf.Bytes()
+	amf.writeObject(msg.Properties)
+	amf.writeObject(msg.Infomation)
+	return amf.Buffer
 }
 
 /*
@@ -828,8 +757,8 @@ func (msg *ResponsePauseMessage) Encode0() {
 //
 type ResponseMessage struct {
 	CommandMessage
-	Properties  interface{} `json:",omitempty"`
-	Infomation  interface{} `json:",omitempty"`
+	Properties  any `json:",omitempty"`
+	Infomation  any `json:",omitempty"`
 	Description string
 }
 
@@ -840,13 +769,9 @@ func (msg *ResponseMessage) Encode0() {
 //}
 
 func (msg *ResponseMessage) Decode0(chunk *Chunk) {
-	amf := newAMFDecoder(chunk.Body)
-	if obj, err := amf.decodeObject(); err == nil {
-		msg.CommandName = obj.(string)
-	}
-	if obj, err := amf.decodeObject(); err == nil {
-		msg.TransactionId = uint64(obj.(float64))
-	}
+	amf := AMF{chunk.Body}
+	msg.CommandName = amf.decodeObject().(string)
+	msg.TransactionId = uint64(amf.decodeObject().(float64))
 }
 
 // User Control Message 4.
@@ -866,11 +791,11 @@ type StreamIDMessage struct {
 }
 
 func (msg *StreamIDMessage) Encode() (b []byte) {
-	b = make([]byte, 6)
-	utils.BigEndian.PutUint16(b, msg.EventType)
-	utils.BigEndian.PutUint32(b[2:], msg.StreamID)
-	msg.EventData = b[2:]
-	return
+	buf := util.Buffer(make([]byte, 0, 6))
+	buf.WriteUint16(msg.EventType)
+	buf.WriteUint32(msg.StreamID)
+	msg.EventData = buf[2:]
+	return buf
 }
 
 // SetBuffer Length (=3)
@@ -884,12 +809,12 @@ type SetBufferMessage struct {
 }
 
 func (msg *SetBufferMessage) Encode() []byte {
-	b := make([]byte, 10)
-	utils.BigEndian.PutUint16(b, msg.EventType)
-	utils.BigEndian.PutUint32(b[2:], msg.StreamID)
-	utils.BigEndian.PutUint32(b[6:], msg.Millisecond)
-	msg.EventData = b[2:]
-	return b
+	buf := util.Buffer(make([]byte, 0, 10))
+	buf.WriteUint16(msg.EventType)
+	buf.WriteUint32(msg.StreamID)
+	buf.WriteUint32(msg.Millisecond)
+	msg.EventData = buf[2:]
+	return buf
 }
 
 // PingRequest (=6)
@@ -902,18 +827,15 @@ type PingRequestMessage struct {
 }
 
 func (msg *PingRequestMessage) Encode() (b []byte) {
-	b = make([]byte, 6)
-	utils.BigEndian.PutUint16(b, msg.EventType)
-	utils.BigEndian.PutUint32(b[2:], msg.Timestamp)
-	msg.EventData = b[2:]
-	return
+	buf := util.Buffer(make([]byte, 0, 6))
+	buf.WriteUint16(msg.EventType)
+	buf.WriteUint32(msg.Timestamp)
+	msg.EventData = buf[2:]
+	return buf
 }
 
 func (msg *UserControlMessage) Encode() []byte {
-	b := make([]byte, 2)
-	utils.BigEndian.PutUint16(b, msg.EventType)
-	msg.EventData = b[2:]
-	return b
+	return util.PutBE(make([]byte, 2), msg.EventType)
 }
 
 type AVPack struct {
