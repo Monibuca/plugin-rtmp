@@ -243,25 +243,25 @@ func (amf *AMF) writeSize16(l int) {
 }
 
 func (amf *AMF) writeString(value string) {
-	amf.WriteUint8(AMF0_STRING)
+	amf.WriteByte(AMF0_STRING)
 	amf.writeSize16(len(value))
 	amf.WriteString(value)
 }
 
 func (amf *AMF) writeNull() {
-	amf.WriteUint8(AMF0_NULL)
+	amf.WriteByte(AMF0_NULL)
 }
 
 func (amf *AMF) writeBool(b bool) {
-	amf.WriteUint8(AMF0_BOOLEAN)
+	amf.WriteByte(AMF0_BOOLEAN)
 	if b {
-		amf.WriteUint8(1)
+		amf.WriteByte(1)
 	}
-	amf.WriteUint8(0)
+	amf.WriteByte(0)
 }
 
 func (amf *AMF) writeNumber(b float64) {
-	amf.WriteUint8(AMF0_NUMBER)
+	amf.WriteByte(AMF0_NUMBER)
 	amf.WriteFloat64(b)
 }
 

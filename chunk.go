@@ -77,10 +77,10 @@ type ChunkMessageHeader struct {
 
 func (nc *NetConnection) encodeChunk12(head *ChunkHeader) []byte {
 	b := util.Buffer(make([]byte, 0, 16))
-	b.WriteUint8(byte(RTMP_CHUNK_HEAD_12 + head.ChunkStreamID))
+	b.WriteByte(byte(RTMP_CHUNK_HEAD_12 + head.ChunkStreamID))
 	b.WriteUint24(head.Timestamp)
 	b.WriteUint24(head.MessageLength)
-	b.WriteUint8(head.MessageTypeID)
+	b.WriteByte(head.MessageTypeID)
 	binary.LittleEndian.PutUint32(b.Malloc(4), head.MessageStreamID)
 	if head.ChunkMessageHeader.Timestamp == 0xffffff {
 		binary.LittleEndian.PutUint32(b.Malloc(4), head.ExtendTimestamp)
@@ -90,10 +90,10 @@ func (nc *NetConnection) encodeChunk12(head *ChunkHeader) []byte {
 
 func (nc *NetConnection) encodeChunk8(head *ChunkHeader) []byte {
 	b := util.Buffer(make([]byte, 0, 8))
-	b.WriteUint8(byte(RTMP_CHUNK_HEAD_8 + head.ChunkStreamID))
+	b.WriteByte(byte(RTMP_CHUNK_HEAD_8 + head.ChunkStreamID))
 	b.WriteUint24(head.Timestamp)
 	b.WriteUint24(head.MessageLength)
-	b.WriteUint8(head.MessageTypeID)
+	b.WriteByte(head.MessageTypeID)
 	return b
 }
 

@@ -391,7 +391,7 @@ func (msg *CallMessage) Encode() []byte {
 
 func (msg *CallMessage) Encode3() []byte {
 	var amf AMF
-	amf.WriteUint8(0)
+	amf.WriteByte(0)
 	amf.writeString(msg.CommandName)
 	amf.writeNumber(float64(msg.TransactionId))
 	amf.writeObject(msg.Object)
