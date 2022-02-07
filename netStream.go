@@ -14,7 +14,7 @@ import (
 
 var gstreamid = uint32(64)
 
-func (cfg *RTMPConfig) Process(conn *net.TCPConn) {
+func (cfg *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 	nc := NetConnection{
 		TCPConn:            conn,
 		Reader:             bufio.NewReader(conn),
@@ -132,28 +132,26 @@ func (cfg *RTMPConfig) Process(conn *net.TCPConn) {
 						err = nc.SendStreamID(RTMP_USER_STREAM_BEGIN)
 						err = nc.SendCommand(SEND_PLAY_RESPONSE_MESSAGE, newPlayResponseMessageData(nc.streamID, NetStream_Play_Reset, Level_Status))
 						err = nc.SendCommand(SEND_PLAY_RESPONSE_MESSAGE, newPlayResponseMessageData(nc.streamID, NetStream_Play_Start, Level_Status))
-						vt, at := subscriber.WaitVideoTrack("h264", "h265"), subscriber.WaitAudioTrack("aac", "pcma", "pcmu")
+						vt, at := subscriber.WaitVideoTrack(), subscriber.WaitAudioTrack()
 						if vt != nil {
 							frame := vt.DecoderConfiguration
 							err = nc.sendAVMessage(0, frame.AVCC, false, true)
-							subscriber.OnVideo = func(frame *engine.VideoFrame) bool {
-								err = nc.sendAVMessage(frame.DeltaTime, frame.AVCC, false, false)
-								return err == nil
+							subscriber.OnVideo = func(frame *engine.VideoFrame) error {
+								return nc.sendAVMessage(frame.DeltaTime, frame.AVCC, false, false)
 							}
 						}
 						if at != nil {
-							subscriber.OnAudio = func(frame *engine.AudioFrame) bool {
+							subscriber.OnAudio = func(frame *engine.AudioFrame) (err error) {
 								if at.CodecID == codec.CodecID_AAC {
 									frame := at.DecoderConfiguration
 									err = nc.sendAVMessage(0, frame.AVCC, true, true)
 								} else {
 									err = nc.sendAVMessage(0, frame.AVCC, true, true)
 								}
-								subscriber.OnAudio = func(frame *engine.AudioFrame) bool {
-									err = nc.sendAVMessage(frame.DeltaTime, frame.AVCC, true, false)
-									return err == nil
+								subscriber.OnAudio = func(frame *engine.AudioFrame) error {
+									return nc.sendAVMessage(frame.DeltaTime, frame.AVCC, true, false)
 								}
-								return err == nil
+								return
 							}
 						}
 						go subscriber.Play(at, vt)

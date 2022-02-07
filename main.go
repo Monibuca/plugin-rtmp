@@ -10,43 +10,40 @@ import (
 )
 
 type RTMPConfig struct {
-	Publish    PublishConfig
-	Subscribe  SubscribeConfig
-	ListenAddr string
-	ChunkSize  int
+	Publish   PublishConfig
+	Subscribe SubscribeConfig
+	TCPConfig
+	ChunkSize int
 	context.Context
 	cancel context.CancelFunc
 }
 
 var config = &RTMPConfig{
-	Publish:    DefaultPublishConfig,
-	Subscribe:  DefaultSubscribeConfig,
-	ChunkSize:  4096,
-	ListenAddr: ":1935",
+	Publish:   DefaultPublishConfig,
+	Subscribe: DefaultSubscribeConfig,
+	ChunkSize: 4096,
+	TCPConfig: TCPConfig{ListenAddr: ":1935"},
 }
 
-func (cfg *RTMPConfig) Update(override map[string]any) {
-	if cfg.cancel == nil || (override != nil && override["ListenAddr"] != nil) {
-		start()
-	}
-}
-
-func init() {
-	InstallPlugin(config)
-}
-
-func start() {
+func (cfg *RTMPConfig) Update(override Config) {
+	override.Unmarshal(cfg)
 	if config.cancel == nil {
 		util.Print(Green("server rtmp start at"), BrightBlue(config.ListenAddr))
-	} else {
+	} else if override.Has("ListenAddr") {
 		config.cancel()
 		util.Print(Green("server rtmp restart at"), BrightBlue(config.ListenAddr))
+	} else {
+		return
 	}
 	config.Context, config.cancel = context.WithCancel(Ctx)
-	err := util.ListenTCP(config.ListenAddr, config)
+	err := cfg.Listen(cfg)
 	if err == context.Canceled {
 		log.Println(err)
 	} else {
 		log.Fatal(err)
 	}
+}
+
+func init() {
+	InstallPlugin(config)
 }
