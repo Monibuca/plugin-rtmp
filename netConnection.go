@@ -7,7 +7,7 @@ import (
 	"io"
 	"net"
 
-	"github.com/Monibuca/engine/v4"
+.	"github.com/Monibuca/engine/v4"
 	"github.com/Monibuca/engine/v4/util"
 )
 
@@ -46,7 +46,7 @@ const (
 
 func newConnectResponseMessageData(objectEncoding float64) (amfobj AMFObject) {
 	amfobj = make(AMFObject)
-	amfobj["fmsVer"] = "monibuca/" + engine.Version
+	amfobj["fmsVer"] = "monibuca/" + Engine.Version
 	amfobj["capabilities"] = 31
 	amfobj["mode"] = 1
 	amfobj["Author"] = "dexter"
@@ -76,8 +76,8 @@ func newPlayResponseMessageData(streamid uint32, code, level string) (amfobj AMF
 }
 
 type NetConnection struct {
-	engine.Publisher
-	subscribers map[uint32]*engine.Subscriber
+	Publisher
+	subscribers map[uint32]*Subscriber
 	*bufio.Reader
 	*net.TCPConn
 	bandwidth          uint32
@@ -208,7 +208,7 @@ func (conn *NetConnection) SendCommand(message string, args any) error {
 		//	}
 		//}
 
-		pro["fmsVer"] = "monibuca/" + engine.Version
+		pro["fmsVer"] = "monibuca/" + Engine.Version
 		pro["capabilities"] = 31
 		pro["mode"] = 1
 		pro["Author"] = "dexter"

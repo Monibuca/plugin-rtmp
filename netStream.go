@@ -14,7 +14,7 @@ import (
 
 var gstreamid = uint32(64)
 
-func (cfg *RTMPConfig) ServeTCP(conn *net.TCPConn) {
+func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 	nc := NetConnection{
 		TCPConn:            conn,
 		Reader:             bufio.NewReader(conn),
@@ -87,8 +87,7 @@ func (cfg *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 					}
 				case "publish":
 					pm := msg.MsgData.(*PublishMessage)
-					nc.Config = config.Publish
-					if nc.Publish(nc.appName+"/"+pm.PublishingName, &nc) {
+					if nc.Publish(nc.appName+"/"+pm.PublishingName, &nc, config.Publish) {
 						absTs := make(map[uint32]uint32)
 						vt := nc.Stream.NewVideoTrack()
 						at := nc.Stream.NewAudioTrack()
@@ -135,7 +134,7 @@ func (cfg *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 						vt, at := subscriber.WaitVideoTrack(), subscriber.WaitAudioTrack()
 						if vt != nil {
 							frame := vt.DecoderConfiguration
-							err = nc.sendAVMessage(0, frame.AVCC, false, true)
+							err = nc.sendAVMessage(0, net.Buffers(frame.AVCC), false, true)
 							subscriber.OnVideo = func(frame *engine.VideoFrame) error {
 								return nc.sendAVMessage(frame.DeltaTime, frame.AVCC, false, false)
 							}
@@ -144,7 +143,7 @@ func (cfg *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 							subscriber.OnAudio = func(frame *engine.AudioFrame) (err error) {
 								if at.CodecID == codec.CodecID_AAC {
 									frame := at.DecoderConfiguration
-									err = nc.sendAVMessage(0, frame.AVCC, true, true)
+									err = nc.sendAVMessage(0, net.Buffers{frame.AVCC}, true, true)
 								} else {
 									err = nc.sendAVMessage(0, frame.AVCC, true, true)
 								}
