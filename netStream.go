@@ -28,7 +28,8 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 	}
 	defer nc.Close()
 	/* Handshake */
-	if util.MayBeError(nc.Handshake()) {
+	if err := nc.Handshake(); err != nil {
+		plugin.Errorln("handshake", err)
 		return
 	}
 	var rec_audio, rec_video func(*Chunk)
@@ -58,7 +59,7 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 					break
 				}
 				cmd := msg.MsgData.(Commander).GetCommand()
-				util.Println(cmd.CommandName)
+				plugin.Debugln("recv cmd", cmd.CommandName)
 				switch cmd.CommandName {
 				case "connect":
 					connect := msg.MsgData.(*CallMessage)
@@ -82,7 +83,8 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 					nc.streamID = atomic.AddUint32(&gstreamid, 1)
 					log.Println("createStream:", nc.streamID)
 					err = nc.SendCommand(SEND_CREATE_STREAM_RESPONSE_MESSAGE, cmd.TransactionId)
-					if util.MayBeError(err) {
+					if err != nil {
+						plugin.Errorln(err)
 						return
 					}
 				case "publish":
@@ -92,6 +94,7 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 						vt := nc.Stream.NewVideoTrack()
 						at := nc.Stream.NewAudioTrack()
 						rec_audio = func(msg *Chunk) {
+							plugin.Traceln("rec_audio", "chunkType", msg.ChunkType, "chunkStreamID", msg.ChunkStreamID, "ts", msg.Timestamp)
 							if msg.ChunkType == 0 {
 								absTs[msg.ChunkStreamID] = 0
 							}
@@ -103,6 +106,7 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 							at.WriteAVCC(absTs[msg.ChunkStreamID], msg.Body)
 						}
 						rec_video = func(msg *Chunk) {
+							plugin.Traceln("rev_video", "chunkType", msg.ChunkType, "chunkStreamID", msg.ChunkStreamID, "ts", msg.Timestamp)
 							if msg.ChunkType == 0 {
 								absTs[msg.ChunkStreamID] = 0
 							}
@@ -181,7 +185,7 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 				rec_video(msg)
 			}
 		} else {
-			util.Println(err)
+			plugin.Errorln(err)
 			return
 		}
 	}

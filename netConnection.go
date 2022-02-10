@@ -355,7 +355,7 @@ func (conn *NetConnection) readChunk() (msg *Chunk, err error) {
 		needRead = unRead
 	}
 	if n, err := conn.ReadFull(currentBody.Malloc(needRead)); err != nil {
-		util.Println(err)
+		plugin.Errorln(err)
 		return nil, err
 	} else {
 		conn.readSeqNum += uint32(n)
