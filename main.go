@@ -2,7 +2,6 @@ package rtmp
 
 import (
 	"context"
-	"log"
 
 	. "github.com/Monibuca/engine/v4"
 	"github.com/Monibuca/engine/v4/config"
@@ -17,12 +16,12 @@ type RTMPConfig struct {
 }
 
 func (config *RTMPConfig) Update(override config.Config) {
-	plugin.Infoln(Green("server rtmp start at"), BrightBlue(config.ListenAddr))
+	plugin.Info(Green("server rtmp start at"), BrightBlue(config.ListenAddr))
 	err := config.Listen(plugin, config)
 	if err == context.Canceled {
-		log.Println(err)
+		plugin.Println(err)
 	} else {
-		log.Fatal(err)
+		plugin.Fatal(err)
 	}
 }
 

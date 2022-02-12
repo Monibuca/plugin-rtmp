@@ -3,7 +3,6 @@ package rtmp
 import (
 	"encoding/binary"
 	"errors"
-	"log"
 
 	"github.com/Monibuca/engine/v4/util"
 )
@@ -283,7 +282,7 @@ func decodeCommandAMF0(chunk *Chunk) {
 		}
 	case "FCPublish", "FCUnpublish":
 	default:
-		log.Println("decode command amf0 cmd:", cmd)
+		plugin.Println("decode command amf0 cmd:", cmd)
 	}
 }
 

@@ -3,7 +3,6 @@ package rtmp
 import (
 	"bufio"
 	"fmt"
-	"log"
 	"net"
 	"sync/atomic"
 
@@ -29,7 +28,7 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 	defer nc.Close()
 	/* Handshake */
 	if err := nc.Handshake(); err != nil {
-		plugin.Errorln("handshake", err)
+		plugin.Error("handshake", err)
 		return
 	}
 	var rec_audio, rec_video func(*Chunk)
@@ -59,7 +58,7 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 					break
 				}
 				cmd := msg.MsgData.(Commander).GetCommand()
-				plugin.Debugln("recv cmd", cmd.CommandName)
+				plugin.Debugf("recv cmd '%s'", cmd.CommandName)
 				switch cmd.CommandName {
 				case "connect":
 					connect := msg.MsgData.(*CallMessage)
@@ -69,7 +68,7 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 						nc.objectEncoding = objectEncoding.(float64)
 					}
 					nc.appName = app.(string)
-					log.Printf("app:%v,objectEncoding:%v", app, objectEncoding)
+					plugin.Infof("connect app:'%s',objectEncoding:%v", nc.appName, objectEncoding)
 					err = nc.SendMessage(RTMP_MSG_ACK_SIZE, Uint32Message(512<<10))
 					nc.writeChunkSize = config.ChunkSize
 					err = nc.SendMessage(RTMP_MSG_CHUNK_SIZE, Uint32Message(config.ChunkSize))
@@ -81,10 +80,10 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 					err = nc.SendCommand(SEND_CONNECT_RESPONSE_MESSAGE, nc.objectEncoding)
 				case "createStream":
 					nc.streamID = atomic.AddUint32(&gstreamid, 1)
-					log.Println("createStream:", nc.streamID)
+					plugin.Info("createStream:", nc.streamID)
 					err = nc.SendCommand(SEND_CREATE_STREAM_RESPONSE_MESSAGE, cmd.TransactionId)
 					if err != nil {
-						plugin.Errorln(err)
+						plugin.Error(err)
 						return
 					}
 				case "publish":
@@ -94,7 +93,7 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 						vt := nc.Stream.NewVideoTrack()
 						at := nc.Stream.NewAudioTrack()
 						rec_audio = func(msg *Chunk) {
-							plugin.Traceln("rec_audio", "chunkType", msg.ChunkType, "chunkStreamID", msg.ChunkStreamID, "ts", msg.Timestamp)
+							plugin.Tracef("rec_audio chunkType:%d chunkStreamID:%d ts:%d", msg.ChunkType, msg.ChunkStreamID, msg.Timestamp)
 							if msg.ChunkType == 0 {
 								absTs[msg.ChunkStreamID] = 0
 							}
@@ -106,7 +105,7 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 							at.WriteAVCC(absTs[msg.ChunkStreamID], msg.Body)
 						}
 						rec_video = func(msg *Chunk) {
-							plugin.Traceln("rev_video", "chunkType", msg.ChunkType, "chunkStreamID", msg.ChunkStreamID, "ts", msg.Timestamp)
+							plugin.Tracef("rev_video chunkType:%d chunkStreamID:%d ts:%d", msg.ChunkType, msg.ChunkStreamID, msg.Timestamp)
 							if msg.ChunkType == 0 {
 								absTs[msg.ChunkStreamID] = 0
 							}
@@ -185,7 +184,7 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 				rec_video(msg)
 			}
 		} else {
-			plugin.Errorln(err)
+			plugin.Error(err)
 			return
 		}
 	}

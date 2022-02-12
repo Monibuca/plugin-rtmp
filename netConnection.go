@@ -7,7 +7,7 @@ import (
 	"io"
 	"net"
 
-.	"github.com/Monibuca/engine/v4"
+	. "github.com/Monibuca/engine/v4"
 	"github.com/Monibuca/engine/v4/util"
 )
 
@@ -355,7 +355,7 @@ func (conn *NetConnection) readChunk() (msg *Chunk, err error) {
 		needRead = unRead
 	}
 	if n, err := conn.ReadFull(currentBody.Malloc(needRead)); err != nil {
-		plugin.Errorln(err)
+		plugin.Error(err)
 		return nil, err
 	} else {
 		conn.readSeqNum += uint32(n)
