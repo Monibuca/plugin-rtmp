@@ -21,7 +21,7 @@ const (
 	NetStream_Play_Failed         = "NetStream.Play.Failed"         // "error"  出于此表中列出的原因之外的某一原因(例如订阅者没有读取权限),播放发生了错误
 
 	NetStream_Play_Switch   = "NetStream.Play.Switch"
-	NetStream_Play_Complete = "NetStream.Play.Switch"
+	NetStream_Play_Complete = "NetStream.Play.Complete"
 
 	NetStream_Data_Start = "NetStream.Data.Start"
 

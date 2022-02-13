@@ -76,7 +76,7 @@ func newPlayResponseMessageData(streamid uint32, code, level string) (amfobj AMF
 }
 
 type NetConnection struct {
-	Publisher
+	*MediaReceiver
 	subscribers map[uint32]*Subscriber
 	*bufio.Reader
 	*net.TCPConn
@@ -96,7 +96,9 @@ type NetConnection struct {
 }
 
 func (conn *NetConnection) Close() {
-	conn.Publisher.Stream.UnPublish()
+	if conn.MediaReceiver != nil {
+		conn.UnPublish()
+	}
 	conn.TCPConn.Close()
 	for _, s := range conn.subscribers {
 		s.Close()
@@ -133,7 +135,7 @@ func (conn *NetConnection) SendCommand(message string, args any) error {
 
 		m := &CreateStreamMessage{}
 		m.CommandName = "createStream"
-		m.TransactionId = 1
+		m.TransactionId = 2
 		return conn.SendMessage(RTMP_MSG_AMF0_COMMAND, m)
 	case SEND_CREATE_STREAM_RESPONSE_MESSAGE:
 		tid, ok := args.(uint64)
@@ -146,9 +148,9 @@ func (conn *NetConnection) SendCommand(message string, args any) error {
 		m.StreamId = conn.streamID
 		return conn.SendMessage(RTMP_MSG_AMF0_COMMAND, m)
 	case SEND_PLAY_MESSAGE:
-		data, ok := args.(map[interface{}]interface{})
+		data, ok := args.(AMFObject)
 		if !ok {
-			errors.New(SEND_PLAY_MESSAGE + ", The parameter is map[interface{}]interface{}")
+			errors.New(SEND_PLAY_MESSAGE + ", The parameter is AMFObject")
 		}
 		m := new(PlayMessage)
 		m.CommandName = "play"
@@ -168,7 +170,7 @@ func (conn *NetConnection) SendCommand(message string, args any) error {
 	case SEND_PLAY_RESPONSE_MESSAGE:
 		data, ok := args.(AMFObject)
 		if !ok {
-			errors.New(SEND_PLAY_RESPONSE_MESSAGE + ", The parameter is AMFObjects(map[string]interface{})")
+			errors.New(SEND_PLAY_RESPONSE_MESSAGE + ", The parameter is AMFObject")
 		}
 
 		obj := make(AMFObject)
@@ -515,7 +517,25 @@ func (conn *NetConnection) RecvMessage() (msg *Chunk, err error) {
 		err = conn.SendMessage(RTMP_MSG_ACK, Uint32Message(conn.totalRead))
 	}
 	for msg == nil && err == nil {
-		msg, err = conn.readChunk()
+		if msg, err = conn.readChunk(); msg != nil {
+			switch msg.MessageTypeID {
+			case RTMP_MSG_CHUNK_SIZE:
+				conn.readChunkSize = int(msg.MsgData.(Uint32Message))
+			case RTMP_MSG_ABORT:
+				delete(conn.incompleteRtmpBody, uint32(msg.MsgData.(Uint32Message)))
+			case RTMP_MSG_ACK, RTMP_MSG_EDGE:
+			case RTMP_MSG_USER_CONTROL:
+				if _, ok := msg.MsgData.(*PingRequestMessage); ok {
+					conn.SendUserControl(RTMP_USER_PING_RESPONSE)
+				}
+			case RTMP_MSG_ACK_SIZE:
+				conn.bandwidth = uint32(msg.MsgData.(Uint32Message))
+			case RTMP_MSG_BANDWIDTH:
+				conn.bandwidth = msg.MsgData.(*SetPeerBandwidthMessage).AcknowledgementWindowsize
+			case RTMP_MSG_AMF0_COMMAND, RTMP_MSG_AUDIO, RTMP_MSG_VIDEO:
+				return msg, err
+			}
+		}
 	}
 	return
 }

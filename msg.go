@@ -3,6 +3,7 @@ package rtmp
 import (
 	"encoding/binary"
 	"errors"
+	"strings"
 
 	"github.com/Monibuca/engine/v4/util"
 )
@@ -62,7 +63,6 @@ const (
 	RTMP_CSID_VIDEO   = 0x05
 )
 
-
 func newChunkHeader(messageType byte) *ChunkHeader {
 	head := new(ChunkHeader)
 	head.ChunkStreamID = RTMP_CSID_CONTROL
@@ -99,7 +99,7 @@ type HaveStreamID interface {
 
 func GetRtmpMessage(chunk *Chunk) error {
 	body := util.Buffer(chunk.Body)
- 	switch chunk.MessageTypeID {
+	switch chunk.MessageTypeID {
 	case RTMP_MSG_CHUNK_SIZE, RTMP_MSG_ABORT, RTMP_MSG_ACK, RTMP_MSG_ACK_SIZE:
 		if len(chunk.Body) < 4 {
 			return errors.New("chunk.Body < 4")
@@ -275,10 +275,41 @@ func decodeCommandAMF0(chunk *Chunk) {
 			amf.readBool(),
 		}
 	case "_result", "_error", "onStatus":
-		chunk.MsgData = &ResponseMessage{
+		if cmdMsg.TransactionId == 2 {
+			chunk.MsgData = &ResponseCreateStreamMessage{
+				cmdMsg, amf.readObject(), uint32(amf.readNumber()),
+			}
+			return
+		}
+		response := &ResponseMessage{
 			cmdMsg,
 			amf.readObject(),
 			amf.readObject(), "",
+		}
+		switch response.Infomation["level"] {
+		case Level_Status:
+			plugin.Infof("_result :", response.Infomation["code"])
+		case Level_Warning:
+			plugin.Warnf("_result :", response.Infomation["code"])
+		case Level_Error:
+			plugin.Errorf("_result :", response.Infomation["code"])
+		}
+		if strings.HasPrefix(response.Infomation["code"].(string), "NetStream.Publish") {
+			chunk.MsgData = &ResponsePublishMessage{
+				cmdMsg,
+				response.Properties,
+				response.Infomation,
+				chunk.MessageStreamID,
+			}
+		} else if strings.HasPrefix(response.Infomation["code"].(string), "NetStream.Play") {
+			chunk.MsgData = &ResponsePlayMessage{
+				cmdMsg,
+				response.Infomation,
+				"",
+				chunk.MessageStreamID,
+			}
+		} else {
+			chunk.MsgData = response
 		}
 	case "FCPublish", "FCUnpublish":
 	default:
@@ -756,21 +787,9 @@ func (msg *ResponsePauseMessage) Encode0() {
 //
 type ResponseMessage struct {
 	CommandMessage
-	Properties  any `json:",omitempty"`
-	Infomation  any `json:",omitempty"`
+	Properties  AMFObject `json:",omitempty"`
+	Infomation  AMFObject `json:",omitempty"`
 	Description string
-}
-
-func (msg *ResponseMessage) Encode0() {
-}
-
-//func (msg *ResponseMessage) Encode3() {
-//}
-
-func (msg *ResponseMessage) Decode0(chunk *Chunk) {
-	amf := AMF{chunk.Body}
-	msg.CommandName = amf.decodeObject().(string)
-	msg.TransactionId = uint64(amf.decodeObject().(float64))
 }
 
 // User Control Message 4.
