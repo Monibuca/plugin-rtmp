@@ -3,55 +3,125 @@ package rtmp
 import (
 	"net"
 
-	"github.com/Monibuca/engine/v4"
 	. "github.com/Monibuca/engine/v4"
 	"github.com/Monibuca/engine/v4/codec"
 	"github.com/Monibuca/engine/v4/track"
+	"github.com/Monibuca/engine/v4/util"
 )
 
-func SendMedia(nc *NetConnection, sub *Subscriber) (err error) {
-	vt, at := sub.WaitVideoTrack(), sub.WaitAudioTrack()
-	if vt != nil {
-		frame := vt.DecoderConfiguration
-		err = nc.sendAVMessage(0, net.Buffers(frame.AVCC), false, true)
-		sub.OnVideo = func(frame *engine.VideoFrame) error {
-			return nc.sendAVMessage(frame.DeltaTime, frame.AVCC, false, false)
-		}
-	}
-	if at != nil {
-		sub.OnAudio = func(frame *engine.AudioFrame) (err error) {
-			if at.CodecID == codec.CodecID_AAC {
-				frame := at.DecoderConfiguration
-				err = nc.sendAVMessage(0, net.Buffers{frame.AVCC}, true, true)
-			} else {
-				err = nc.sendAVMessage(0, frame.AVCC, true, true)
+type RTMPSender struct {
+	Subscriber
+	NetStream
+}
+
+func (rtmp *RTMPSender) OnEvent(event any) any {
+	rtmp.Subscriber.OnEvent(event)
+	switch v := event.(type) {
+	case TrackRemoved:
+		//TODO
+	case *track.Audio:
+		isPlaying := rtmp.IsPlaying()
+		if rtmp.AddTrack(v) {
+			if v.CodecID == codec.CodecID_AAC {
+				rtmp.sendAVMessage(0, net.Buffers{rtmp.Subscriber.AudioTrack.DecoderConfiguration.AVCC}, false, true)
 			}
-			sub.OnAudio = func(frame *engine.AudioFrame) error {
-				return nc.sendAVMessage(frame.DeltaTime, frame.AVCC, true, false)
+			// 如果不订阅视频则遇到音频也播放，否则需要等视频先播放
+			if !isPlaying && !rtmp.Config.SubVideo {
+				go rtmp.Play()
 			}
-			return
 		}
+	case *track.Video:
+		isPlaying := rtmp.IsPlaying()
+		if rtmp.AddTrack(v) {
+			rtmp.sendAVMessage(0, net.Buffers(rtmp.Subscriber.VideoTrack.DecoderConfiguration.AVCC), true, true)
+			if !isPlaying {
+				go rtmp.Play()
+			}
+		}
+	case *AudioFrame:
+		rtmp.sendAVMessage(v.DeltaTime, v.AVCC, true, false)
+	case *VideoFrame:
+		rtmp.sendAVMessage(v.DeltaTime, v.AVCC, false, false)
 	}
-	sub.Play(at, vt)
+	return event
+}
+
+// 当发送音视频数据的时候,当块类型为12的时候,Chunk Message Header有一个字段TimeStamp,指明一个时间
+// 当块类型为4,8的时候,Chunk Message Header有一个字段TimeStamp Delta,记录与上一个Chunk的时间差值
+// 当块类型为0的时候,Chunk Message Header没有时间字段,与上一个Chunk时间值相同
+func (sender *RTMPSender) sendAVMessage(ts uint32, payload net.Buffers, isAudio bool, isFirst bool) (err error) {
+	if sender.writeSeqNum > sender.bandwidth {
+		sender.totalWrite += sender.writeSeqNum
+		sender.writeSeqNum = 0
+		sender.SendMessage(RTMP_MSG_ACK, Uint32Message(sender.totalWrite))
+		sender.SendStreamID(RTMP_USER_PING_REQUEST, 0)
+	}
+
+	var head *ChunkHeader
+	if isAudio {
+		head = newRtmpHeader(RTMP_CSID_AUDIO, ts, uint32(util.SizeOfBuffers(payload)), RTMP_MSG_AUDIO, sender.StreamID, 0)
+	} else {
+		head = newRtmpHeader(RTMP_CSID_VIDEO, ts, uint32(util.SizeOfBuffers(payload)), RTMP_MSG_VIDEO, sender.StreamID, 0)
+	}
+
+	// 第一次是发送关键帧,需要完整的消息头(Chunk Basic Header(1) + Chunk Message Header(11) + Extended Timestamp(4)(可能会要包括))
+	// 后面开始,就是直接发送音视频数据,那么直接发送,不需要完整的块(Chunk Basic Header(1) + Chunk Message Header(7))
+	// 当Chunk Type为0时(即Chunk12),
+	var chunk1 net.Buffers
+	if isFirst {
+		chunk1 = append(chunk1, sender.encodeChunk12(head))
+	} else {
+		chunk1 = append(chunk1, sender.encodeChunk8(head))
+	}
+	chunks := util.SplitBuffers(payload, sender.writeChunkSize)
+	chunk1 = append(chunk1, chunks[0]...)
+	sender.writeSeqNum += uint32(util.SizeOfBuffers(chunk1))
+	_, err = chunk1.WriteTo(sender.NetConnection)
+	// 如果在音视频数据太大,一次发送不完,那么这里进行分割(data + Chunk Basic Header(1))
+	for _, chunk := range chunks[1:] {
+		chunk1 = net.Buffers{sender.encodeChunk1(head)}
+		chunk1 = append(chunk1, chunk...)
+		sender.writeSeqNum += uint32(util.SizeOfBuffers(chunk1))
+		_, err = chunk1.WriteTo(sender.NetConnection)
+	}
+
 	return nil
 }
 
-func NewMediaReceiver(pub *Publisher) *MediaReceiver {
-	return &MediaReceiver{
-		pub,
-		make(map[uint32]uint32), pub.NewVideoTrack(), pub.NewAudioTrack(),
+func (r *RTMPSender) Response(code, level string) error {
+	m := new(ResponsePlayMessage)
+	m.CommandName = Response_OnStatus
+	m.TransactionId = 0
+	m.Object = AMFObject{
+		"code":     code,
+		"level":    level,
+		"clientid": 1,
 	}
+	m.StreamID = r.StreamID
+	return r.SendMessage(RTMP_MSG_AMF0_COMMAND, m)
 }
 
-type MediaReceiver struct {
-	*Publisher
-	absTs map[uint32]uint32
-	vt    *track.UnknowVideo
-	at    *track.UnknowAudio
+type RTMPReceiver struct {
+	Publisher
+	NetStream
+	absTs    map[uint32]uint32
 }
 
-func (r *MediaReceiver) ReceiveAudio(msg *Chunk) {
-	plugin.Tracef("rec_audio chunkType:%d chunkStreamID:%d ts:%d", msg.ChunkType, msg.ChunkStreamID, msg.Timestamp)
+func (r *RTMPReceiver) Response(code, level string) error {
+	m := new(ResponsePublishMessage)
+	m.CommandName = Response_OnStatus
+	m.TransactionId = 0
+	m.Infomation = AMFObject{
+		"code":     code,
+		"level":    level,
+		"clientid": 1,
+	}
+	m.StreamID = r.StreamID
+	return r.SendMessage(RTMP_MSG_AMF0_COMMAND, m)
+}
+
+func (r *RTMPReceiver) ReceiveAudio(msg *Chunk) {
+	// plugin.Tracef("rec_audio chunkType:%d chunkStreamID:%d ts:%d", msg.ChunkType, msg.ChunkStreamID, msg.Timestamp)
 	if msg.ChunkType == 0 {
 		r.absTs[msg.ChunkStreamID] = 0
 	}
@@ -60,10 +130,10 @@ func (r *MediaReceiver) ReceiveAudio(msg *Chunk) {
 	} else {
 		r.absTs[msg.ChunkStreamID] += msg.Timestamp
 	}
-	r.at.WriteAVCC(r.absTs[msg.ChunkStreamID], msg.Body)
+	r.AudioTrack.WriteAVCC(r.absTs[msg.ChunkStreamID], msg.Body)
 }
-func (r *MediaReceiver) ReceiveVideo(msg *Chunk) {
-	plugin.Tracef("rev_video chunkType:%d chunkStreamID:%d ts:%d", msg.ChunkType, msg.ChunkStreamID, msg.Timestamp)
+func (r *RTMPReceiver) ReceiveVideo(msg *Chunk) {
+	// plugin.Tracef("rev_video chunkType:%d chunkStreamID:%d ts:%d", msg.ChunkType, msg.ChunkStreamID, msg.Timestamp)
 	if msg.ChunkType == 0 {
 		r.absTs[msg.ChunkStreamID] = 0
 	}
@@ -72,5 +142,5 @@ func (r *MediaReceiver) ReceiveVideo(msg *Chunk) {
 	} else {
 		r.absTs[msg.ChunkStreamID] += msg.Timestamp
 	}
-	r.vt.WriteAVCC(r.absTs[msg.ChunkStreamID], msg.Body)
+	r.VideoTrack.WriteAVCC(r.absTs[msg.ChunkStreamID], msg.Body)
 }

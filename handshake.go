@@ -90,7 +90,7 @@ func (nc *NetConnection) Handshake() error {
 	return nc.complex_handshake(C1)
 }
 
-func (client *RTMPClient) Handshake() error {
+func (client *NetConnection) ClientHandshake() error {
 	C0C1 := make([]byte, 1536+1)
 	C0C1[0] = RTMP_HANDSHAKE_VERSION
 	client.Write(C0C1)

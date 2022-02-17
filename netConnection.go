@@ -28,7 +28,6 @@ const (
 	SEND_CONNECT_RESPONSE_MESSAGE = "Send Connect Response Message"
 
 	SEND_CREATE_STREAM_MESSAGE          = "Send Create Stream Message"
-	SEND_CREATE_STREAM_RESPONSE_MESSAGE = "Send Create Stream Response Message"
 
 	SEND_PLAY_MESSAGE          = "Send Play Message"
 	SEND_PLAY_RESPONSE_MESSAGE = "Send Play Response Message"
@@ -76,8 +75,6 @@ func newPlayResponseMessageData(streamid uint32, code, level string) (amfobj AMF
 }
 
 type NetConnection struct {
-	*MediaReceiver
-	subscribers map[uint32]*Subscriber
 	*bufio.Reader
 	*net.TCPConn
 	bandwidth          uint32
@@ -88,35 +85,30 @@ type NetConnection struct {
 	writeChunkSize     int
 	readChunkSize      int
 	incompleteRtmpBody map[uint32]util.Buffer  // 完整的RtmpBody,在网络上是被分成一块一块的,需要将其组装起来
-	streamID           uint32                  // 流ID
 	rtmpHeader         map[uint32]*ChunkHeader // RtmpHeader
 	objectEncoding     float64
 	appName            string
 	tmpBuf             []byte //用来接收小数据，复用内存
 }
 
-func (conn *NetConnection) Close() {
-	if conn.MediaReceiver != nil {
-		conn.UnPublish()
-	}
-	conn.TCPConn.Close()
-	for _, s := range conn.subscribers {
-		s.Close()
-	}
-}
-
 func (conn *NetConnection) ReadFull(buf []byte) (n int, err error) {
 	return io.ReadFull(conn.Reader, buf)
 }
-func (conn *NetConnection) SendStreamID0(eventType uint16) (err error) {
-	return conn.SendMessage(RTMP_MSG_USER_CONTROL, &StreamIDMessage{UserControlMessage{EventType: eventType}, 0})
-}
-func (conn *NetConnection) SendStreamID(eventType uint16) (err error) {
-	return conn.SendMessage(RTMP_MSG_USER_CONTROL, &StreamIDMessage{UserControlMessage{EventType: eventType}, conn.streamID})
+func (conn *NetConnection) SendStreamID(eventType uint16, streamID uint32) (err error) {
+	return conn.SendMessage(RTMP_MSG_USER_CONTROL, &StreamIDMessage{UserControlMessage{EventType: eventType}, streamID})
 }
 func (conn *NetConnection) SendUserControl(eventType uint16) error {
 	return conn.SendMessage(RTMP_MSG_USER_CONTROL, &UserControlMessage{EventType: eventType})
 }
+
+func (conn *NetConnection) ResponseCreateStream(tid uint64, streamID uint32) error {
+	m := &ResponseCreateStreamMessage{}
+	m.CommandName = Response_Result
+	m.TransactionId = tid
+	m.StreamId = streamID
+	return conn.SendMessage(RTMP_MSG_AMF0_COMMAND, m)
+}
+
 func (conn *NetConnection) SendCommand(message string, args any) error {
 	switch message {
 	// case SEND_SET_BUFFER_LENGTH_MESSAGE:
@@ -137,16 +129,6 @@ func (conn *NetConnection) SendCommand(message string, args any) error {
 		m.CommandName = "createStream"
 		m.TransactionId = 2
 		return conn.SendMessage(RTMP_MSG_AMF0_COMMAND, m)
-	case SEND_CREATE_STREAM_RESPONSE_MESSAGE:
-		tid, ok := args.(uint64)
-		if !ok {
-			return errors.New(SEND_CREATE_STREAM_RESPONSE_MESSAGE + ", The parameter only one(TransactionId uint64)!")
-		}
-		m := &ResponseCreateStreamMessage{}
-		m.CommandName = Response_Result
-		m.TransactionId = tid
-		m.StreamId = conn.streamID
-		return conn.SendMessage(RTMP_MSG_AMF0_COMMAND, m)
 	case SEND_PLAY_MESSAGE:
 		data, ok := args.(AMFObject)
 		if !ok {
@@ -156,14 +138,14 @@ func (conn *NetConnection) SendCommand(message string, args any) error {
 		m.CommandName = "play"
 		m.TransactionId = 1
 		for i, v := range data {
-			if i == "StreamPath" {
+			if i == "StreamName" {
 				m.StreamName = v.(string)
 			} else if i == "Start" {
 				m.Start = v.(uint64)
 			} else if i == "Duration" {
 				m.Duration = v.(uint64)
-			} else if i == "Rest" {
-				m.Rest = v.(bool)
+			} else if i == "Reset" {
+				m.Reset = v.(bool)
 			}
 		}
 		return conn.SendMessage(RTMP_MSG_AMF0_COMMAND, m)
@@ -246,16 +228,7 @@ func (conn *NetConnection) SendCommand(message string, args any) error {
 		m.Object = obj
 		m.Optional = info
 		return conn.SendMessage(RTMP_MSG_AMF0_COMMAND, m)
-	case SEND_PUBLISH_RESPONSE_MESSAGE, SEND_PUBLISH_START_MESSAGE:
-		info := args.(AMFObject)
-		info["clientid"] = 1
-		m := new(ResponsePublishMessage)
-		m.CommandName = Response_OnStatus
-		m.TransactionId = 0
-		m.Infomation = info
-		m.StreamID = info["streamid"].(uint32)
-		delete(info, "streamid")
-		return conn.SendMessage(RTMP_MSG_AMF0_COMMAND, m)
+
 	case SEND_UNPUBLISH_RESPONSE_MESSAGE:
 		data, ok := args.(AMFObject)
 		if !ok {
@@ -267,48 +240,6 @@ func (conn *NetConnection) SendCommand(message string, args any) error {
 		return conn.SendMessage(RTMP_MSG_AMF0_COMMAND, m)
 	}
 	return errors.New("send message no exist")
-}
-
-// 当发送音视频数据的时候,当块类型为12的时候,Chunk Message Header有一个字段TimeStamp,指明一个时间
-// 当块类型为4,8的时候,Chunk Message Header有一个字段TimeStamp Delta,记录与上一个Chunk的时间差值
-// 当块类型为0的时候,Chunk Message Header没有时间字段,与上一个Chunk时间值相同
-func (conn *NetConnection) sendAVMessage(ts uint32, payload net.Buffers, isAudio bool, isFirst bool) (err error) {
-	if conn.writeSeqNum > conn.bandwidth {
-		conn.totalWrite += conn.writeSeqNum
-		conn.writeSeqNum = 0
-		conn.SendMessage(RTMP_MSG_ACK, Uint32Message(conn.totalWrite))
-		conn.SendStreamID0(RTMP_USER_PING_REQUEST)
-	}
-
-	var head *ChunkHeader
-	if isAudio {
-		head = newRtmpHeader(RTMP_CSID_AUDIO, ts, uint32(util.SizeOfBuffers(payload)), RTMP_MSG_AUDIO, conn.streamID, 0)
-	} else {
-		head = newRtmpHeader(RTMP_CSID_VIDEO, ts, uint32(util.SizeOfBuffers(payload)), RTMP_MSG_VIDEO, conn.streamID, 0)
-	}
-
-	// 第一次是发送关键帧,需要完整的消息头(Chunk Basic Header(1) + Chunk Message Header(11) + Extended Timestamp(4)(可能会要包括))
-	// 后面开始,就是直接发送音视频数据,那么直接发送,不需要完整的块(Chunk Basic Header(1) + Chunk Message Header(7))
-	// 当Chunk Type为0时(即Chunk12),
-	var chunk1 net.Buffers
-	if isFirst {
-		chunk1 = append(chunk1, conn.encodeChunk12(head))
-	} else {
-		chunk1 = append(chunk1, conn.encodeChunk8(head))
-	}
-	chunks := util.SplitBuffers(payload, conn.writeChunkSize)
-	chunk1 = append(chunk1, chunks[0]...)
-	conn.writeSeqNum += uint32(util.SizeOfBuffers(chunk1))
-	_, err = chunk1.WriteTo(conn)
-	// 如果在音视频数据太大,一次发送不完,那么这里进行分割(data + Chunk Basic Header(1))
-	for _, chunk := range chunks[1:] {
-		chunk1 = net.Buffers{conn.encodeChunk1(head)}
-		chunk1 = append(chunk1, chunk...)
-		conn.writeSeqNum += uint32(util.SizeOfBuffers(chunk1))
-		_, err = chunk1.WriteTo(conn)
-	}
-
-	return nil
 }
 
 func (conn *NetConnection) readChunk() (msg *Chunk, err error) {
@@ -357,7 +288,6 @@ func (conn *NetConnection) readChunk() (msg *Chunk, err error) {
 		needRead = unRead
 	}
 	if n, err := conn.ReadFull(currentBody.Malloc(needRead)); err != nil {
-		plugin.Error(err)
 		return nil, err
 	} else {
 		conn.readSeqNum += uint32(n)
@@ -550,7 +480,7 @@ func (conn *NetConnection) SendMessage(t byte, msg RtmpMessage) (err error) {
 		conn.totalWrite += conn.writeSeqNum
 		conn.writeSeqNum = 0
 		err = conn.SendMessage(RTMP_MSG_ACK, Uint32Message(conn.totalWrite))
-		err = conn.SendStreamID0(RTMP_USER_PING_REQUEST)
+		err = conn.SendStreamID(RTMP_USER_PING_REQUEST, 0)
 	}
 	var chunk = net.Buffers{conn.encodeChunk12(head)}
 	if len(body) > conn.writeChunkSize {

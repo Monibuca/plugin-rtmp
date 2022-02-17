@@ -2,11 +2,10 @@ package rtmp
 
 import (
 	"context"
-	"errors"
 
 	. "github.com/Monibuca/engine/v4"
 	"github.com/Monibuca/engine/v4/config"
-	. "github.com/logrusorgru/aurora"
+	"go.uber.org/zap"
 )
 
 type RTMPConfig struct {
@@ -18,13 +17,15 @@ type RTMPConfig struct {
 	ChunkSize int
 }
 
+var _ PullPlugin = (*RTMPConfig)(nil)
+
 func (config *RTMPConfig) Update(override config.Config) {
-	plugin.Info(Green("server rtmp start at"), BrightBlue(config.ListenAddr))
+	plugin.Info("server rtmp start at", zap.String("listen addr", config.ListenAddr))
 	err := config.Listen(plugin, config)
 	if err == context.Canceled {
-		plugin.Println(err)
+		plugin.Info("rtmp listen shutdown")
 	} else {
-		plugin.Fatal(err)
+		plugin.Fatal("rtmp server", zap.Error(err))
 	}
 }
 
@@ -33,22 +34,16 @@ var plugin = InstallPlugin(&RTMPConfig{
 	TCP:       config.TCP{ListenAddr: ":1935"},
 })
 
-func (config *RTMPConfig) PullStream(streamPath string, puller Puller) error {
-	var client RTMPPuller
-	client.Puller = puller
-	if client.Publish(streamPath, &client, config.Publish) {
-		return nil
-	} else {
-		return errors.New("publish faild")
+func (config *RTMPConfig) PullStream(puller Puller) {
+	client := RTMPPuller{
+		Puller: puller,
 	}
+	client.OnEvent(PullEvent(0))
 }
 
-func (config *RTMPConfig) PushStream(stream *Stream, pusher Pusher) error {
-	var client RTMPPusher
-	client.ID = "RTMPPusher"
-	client.Pusher = pusher
-	if client.Subscribe(stream.Path,config.Subscribe) {
-		client.Pusher.Push(&client, config.Push)
+func (config *RTMPConfig) PushStream(pusher Pusher) {
+	client := RTMPPusher{
+		Pusher: pusher,
 	}
-	return nil
+	client.OnEvent(PushEvent(0))
 }

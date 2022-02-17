@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/Monibuca/engine/v4/util"
+	"go.uber.org/zap"
 )
 
 const (
@@ -217,6 +218,7 @@ func decodeCommandAMF0(chunk *Chunk) {
 		chunk.MsgData = &CreateStreamMessage{
 			cmdMsg, amf.readObject(),
 		}
+
 	case "play":
 		amf.readNull()
 		chunk.MsgData = &PlayMessage{
@@ -239,7 +241,10 @@ func decodeCommandAMF0(chunk *Chunk) {
 	case "publish":
 		amf.readNull()
 		chunk.MsgData = &PublishMessage{
-			cmdMsg,
+			CURDStreamMessage{
+				cmdMsg,
+				chunk.MessageStreamID,
+			},
 			amf.readString(),
 			amf.readString(),
 		}
@@ -286,13 +291,14 @@ func decodeCommandAMF0(chunk *Chunk) {
 			amf.readObject(),
 			amf.readObject(), "",
 		}
+		codef := zap.String("code", response.Infomation["code"].(string))
 		switch response.Infomation["level"] {
 		case Level_Status:
-			plugin.Infof("_result :", response.Infomation["code"])
+			plugin.Info("_result :", codef)
 		case Level_Warning:
-			plugin.Warnf("_result :", response.Infomation["code"])
+			plugin.Warn("_result :", codef)
 		case Level_Error:
-			plugin.Errorf("_result :", response.Infomation["code"])
+			plugin.Error("_result :", codef)
 		}
 		if strings.HasPrefix(response.Infomation["code"].(string), "NetStream.Publish") {
 			chunk.MsgData = &ResponsePublishMessage{
@@ -313,7 +319,7 @@ func decodeCommandAMF0(chunk *Chunk) {
 		}
 	case "FCPublish", "FCUnpublish":
 	default:
-		plugin.Println("decode command amf0 cmd:", cmd)
+		plugin.Info("decode command amf0 ", zap.String("cmd", cmd))
 	}
 }
 
@@ -477,7 +483,7 @@ type PlayMessage struct {
 	StreamName string
 	Start      uint64
 	Duration   uint64
-	Rest       bool
+	Reset      bool
 }
 
 // 命令名 -> 命令名,设置为”play”
@@ -502,7 +508,7 @@ func (msg *PlayMessage) Encode() []byte {
 		amf.writeNumber(float64(msg.Duration))
 	}
 
-	amf.writeBool(msg.Rest)
+	amf.writeBool(msg.Reset)
 	return amf.Buffer
 }
 
@@ -532,6 +538,10 @@ type CURDStreamMessage struct {
 	StreamId uint32
 }
 
+func (msg *CURDStreamMessage) GetStreamID() uint32 {
+	return msg.StreamId
+}
+
 func (msg *CURDStreamMessage) Encode0() {
 }
 
@@ -557,7 +567,7 @@ func (msg *ReceiveAVMessage) Encode0() {
 // The client sends the publish command to publish a named stream to the server. Using this name,
 // any client can play this stream and receive the published audio, video, and data messages
 type PublishMessage struct {
-	CommandMessage
+	CURDStreamMessage
 	PublishingName string
 	PublishingType string
 }
@@ -572,7 +582,14 @@ type PublishMessage struct {
 // “append”:流被发布并且附加到一个文件之后.如果没有发现文件则创建一个文件.
 // “live”:发布直播数据而不录制到文件
 
-func (msg *PublishMessage) Encode0() {
+func (msg *PublishMessage) Encode0() []byte {
+	var amf AMF
+	amf.writeString(msg.CommandName)
+	amf.writeNumber(float64(msg.TransactionId))
+	amf.writeNull()
+	amf.writeString(msg.PublishingName)
+	amf.writeString(msg.PublishingType)
+	return amf.Buffer
 }
 
 // Seek Message

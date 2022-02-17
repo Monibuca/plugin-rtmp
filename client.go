@@ -8,24 +8,21 @@ import (
 
 	"github.com/Monibuca/engine/v4"
 	"github.com/Monibuca/engine/v4/util"
+	"go.uber.org/zap"
 )
 
-type RTMPClient struct {
-	NetConnection
-}
-
-func (client *RTMPClient) Connect(addr string) bool {
+func NewRTMPClient(addr string) (client *NetConnection) {
 	u, err := url.Parse(addr)
 	if err != nil {
-		plugin.Error(err)
-		return false
+		plugin.Error("connect url parse", zap.Error(err))
+		return
 	}
 	conn, err := net.Dial("tcp", u.Host)
 	if err != nil {
-		plugin.Error(err)
-		return false
+		plugin.Error("dial tcp", zap.String("host", u.Host), zap.Error(err))
+		return
 	}
-	client.NetConnection = NetConnection{
+	client = &NetConnection{
 		TCPConn:            conn.(*net.TCPConn),
 		Reader:             bufio.NewReader(conn),
 		writeChunkSize:     RTMP_DEFAULT_CHUNK_SIZE,
@@ -36,10 +33,10 @@ func (client *RTMPClient) Connect(addr string) bool {
 		tmpBuf:             make([]byte, 4),
 		// subscribers:        make(map[uint32]*engine.Subscriber),
 	}
-	err = client.Handshake()
+	err = client.ClientHandshake()
 	if err != nil {
-		plugin.Error(err)
-		return false
+		plugin.Error("handshake", zap.Error(err))
+		return nil
 	}
 	connectArg := make(AMFObject)
 	connectArg["swfUrl"] = addr
@@ -51,7 +48,7 @@ func (client *RTMPClient) Connect(addr string) bool {
 	for {
 		msg, err := client.RecvMessage()
 		if err != nil {
-			return false
+			return nil
 		}
 		switch msg.MessageTypeID {
 		case RTMP_MSG_AMF0_COMMAND:
@@ -60,96 +57,140 @@ func (client *RTMPClient) Connect(addr string) bool {
 			case "_result":
 				response := msg.MsgData.(*ResponseMessage)
 				if response.Infomation["code"] == NetConnection_Connect_Success {
-					return true
+					return
 				} else {
-					return false
+					return nil
 				}
 			}
 		}
 	}
 }
 
-var _ engine.IPusher = (*RTMPPusher)(nil)
-var _ engine.IPuller = (*RTMPPuller)(nil)
-
 type RTMPPusher struct {
+	RTMPSender
 	engine.Pusher
-	RTMPClient
+}
+
+func (pusher *RTMPPusher) OnEvent(event any) any {
+	pusher.RTMPSender.OnEvent(event)
+	switch event.(type) {
+	case *engine.Stream:
+		pusher.NetConnection = NewRTMPClient(pusher.RemoteURL)
+		if pusher.NetConnection != nil {
+			pusher.SendCommand(SEND_CREATE_STREAM_MESSAGE, nil)
+			go pusher.push()
+		}
+	case engine.PushEvent:
+		pusher.PushCount++
+		if pusher.Stream == nil {
+			if plugin.Subscribe(pusher.StreamPath, pusher) {
+			}
+		}
+	}
+	return event
 }
 
 func (pusher *RTMPPusher) push() {
-	SendMedia(&pusher.NetConnection, &pusher.Subscriber)
-	pusher.NetConnection.Close()
-}
+	defer pusher.Unsubscribe()
+	for {
+		msg, err := pusher.RecvMessage()
+		if err != nil {
+			break
+		}
+		switch msg.MessageTypeID {
+		case RTMP_MSG_AMF0_COMMAND:
+			cmd := msg.MsgData.(Commander).GetCommand()
+			switch cmd.CommandName {
+			case "_result":
+				if response, ok := msg.MsgData.(*ResponseCreateStreamMessage); ok {
+					pusher.StreamID = response.StreamId
+					m := &PublishMessage{
+						CURDStreamMessage{
+							CommandMessage{
+								"publish",
+								0,
+							},
+							response.StreamId,
+						},
+						pusher.Stream.StreamName,
+						"live",
+					}
+					pusher.SendMessage(RTMP_MSG_AMF0_COMMAND, m)
+				} else if response, ok := msg.MsgData.(*ResponsePublishMessage); ok {
+					if response.Infomation["code"] == "NetStream.Publish.Start" {
 
-func (pusher *RTMPPusher) Push(count int) {
-	if pusher.Connect(pusher.RemoteURL) {
-		pusher.SendCommand(SEND_CREATE_STREAM_MESSAGE, nil)
-		for {
-			msg, err := pusher.RecvMessage()
-			if err != nil {
-				return
-			}
-			switch msg.MessageTypeID {
-			case RTMP_MSG_AMF0_COMMAND:
-				cmd := msg.MsgData.(Commander).GetCommand()
-				switch cmd.CommandName {
-				case "_result":
-					if response, ok := msg.MsgData.(*ResponseCreateStreamMessage); ok {
-						arg := make(AMFObject)
-						arg["streamid"] = response.StreamId
-						pusher.SendCommand(SEND_PUBLISH_START_MESSAGE, arg)
-					} else if response, ok := msg.MsgData.(*ResponsePublishMessage); ok {
-						if response.Infomation["code"] == "NetStream.Publish.Start" {
-							go pusher.push()
-						} else {
-							return
-						}
+					} else {
+						return
 					}
 				}
 			}
 		}
 	}
+	if !pusher.Stream.IsClosed() && pusher.Reconnect() {
+		pusher.OnEvent(engine.PullEvent(pusher.PushCount))
+	}
 }
 
 type RTMPPuller struct {
+	RTMPReceiver
 	engine.Puller
-	RTMPClient
+}
+
+func (puller *RTMPPuller) OnEvent(event any) any {
+	puller.RTMPReceiver.OnEvent(event)
+	switch event.(type) {
+	case *engine.Stream:
+		puller.NetConnection = NewRTMPClient(puller.RemoteURL)
+		if puller.NetConnection != nil {
+			puller.absTs = make(map[uint32]uint32)
+			puller.SendCommand(SEND_CREATE_STREAM_MESSAGE, nil)
+			go puller.pull()
+			break
+		}
+	case engine.PullEvent:
+		puller.PullCount++
+		if puller.Stream == nil {
+			if plugin.Publish(puller.StreamPath, puller) {
+				break
+			}
+		}
+	}
+	return event
 }
 
 func (puller *RTMPPuller) pull() {
+	defer puller.Unpublish()
 	for {
 		msg, err := puller.RecvMessage()
 		if err != nil {
-			return
+			break
 		}
 		switch msg.MessageTypeID {
 		case RTMP_MSG_AUDIO:
 			puller.ReceiveAudio(msg)
 		case RTMP_MSG_VIDEO:
 			puller.ReceiveVideo(msg)
-			// case RTMP_MSG_AMF0_COMMAND:
-			// 	cmd := msg.MsgData.(Commander).GetCommand()
-			// 	switch cmd.CommandName {
-			// 	case "_result":
-			// 		if response, ok := msg.MsgData.(*ResponsePlayMessage); ok {
-			// 			if response.Object["code"] == "NetStream.Play.Start" {
+		case RTMP_MSG_AMF0_COMMAND:
+			cmd := msg.MsgData.(Commander).GetCommand()
+			switch cmd.CommandName {
+			case "_result":
+				if response, ok := msg.MsgData.(*ResponseCreateStreamMessage); ok {
+					puller.StreamID = response.StreamId
+					m := &PlayMessage{}
+					m.CommandMessage.CommandName = "play"
+					m.StreamName = puller.Stream.StreamName
+					puller.SendMessage(RTMP_MSG_AMF0_COMMAND, m)
+					// if response, ok := msg.MsgData.(*ResponsePlayMessage); ok {
+					// 	if response.Object["code"] == "NetStream.Play.Start" {
 
-			// 			} else if response.Object["level"] == Level_Error {
-			// 				return errors.New(response.Object["code"].(string))
-			// 			}
-			// 		} else {
-			// 			return errors.New("pull faild")
-			// 		}
-			// 	}
-			// }
+					// 	} else if response.Object["level"] == Level_Error {
+					// 		return errors.New(response.Object["code"].(string))
+					// 	}
+					// } else {
+					// 	return errors.New("pull faild")
+					// }
+				}
+			}
 		}
-	}
-}
-func (puller *RTMPPuller) Pull(count int) {
-	if puller.Connect(puller.RemoteURL) {
-		puller.SendCommand(SEND_PLAY_MESSAGE, AMFObject{"StreamPath": puller.StreamName})
-		puller.MediaReceiver = NewMediaReceiver(&puller.Publisher)
-		go puller.pull()
 	}
 }
