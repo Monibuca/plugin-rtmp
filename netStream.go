@@ -89,6 +89,7 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 					}
 					receiver.OnEvent(ctx)
 					if plugin.Publish(nc.appName+"/"+pm.PublishingName, receiver) {
+						receivers[receiver.StreamID] = receiver
 						receiver.absTs = make(map[uint32]uint32)
 						receiver.Begin()
 						err = receiver.Response(NetStream_Publish_Start, Level_Status)
@@ -107,7 +108,7 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 					sender.OnEvent(ctx)
 					sender.ID = fmt.Sprintf("%s|%d", conn.RemoteAddr().String(), sender.StreamID)
 					if plugin.Subscribe(streamPath, sender) {
-						senders[msg.MessageStreamID] = sender
+						senders[sender.StreamID] = sender
 						err = nc.SendStreamID(RTMP_USER_STREAM_IS_RECORDED, msg.MessageStreamID)
 						sender.Begin()
 						sender.Response(NetStream_Play_Reset, Level_Status)
