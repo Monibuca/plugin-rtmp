@@ -23,8 +23,19 @@ func (ns *NetStream) Begin() {
 
 var gstreamid = uint32(64)
 
+type RTMPSubscriber struct {
+	RTMPSender
+}
+
+func (s *RTMPSubscriber) OnEvent(event any) {
+	switch event.(type) {
+	case engine.SEclose:
+		s.Response(NetStream_Play_Stop, Level_Status)
+	}
+	s.RTMPSender.OnEvent(event)
+}
 func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
-	senders := make(map[uint32]*RTMPSender)
+	senders := make(map[uint32]*RTMPSubscriber)
 	receivers := make(map[uint32]*RTMPReceiver)
 	nc := NetConnection{
 		TCPConn:            conn,
@@ -37,8 +48,10 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 		tmpBuf:             make([]byte, 4),
 	}
 	ctx, cancel := context.WithCancel(engine.Engine)
-	defer nc.Close()
-	defer cancel()
+	defer func() {
+		nc.Close()
+		cancel()
+	}()
 	/* Handshake */
 	if err := nc.Handshake(); err != nil {
 		plugin.Error("handshake", zap.Error(err))
@@ -87,6 +100,7 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 							StreamID:      pm.StreamId,
 						},
 					}
+					receiver.Closer = &nc
 					receiver.OnEvent(ctx)
 					if plugin.Publish(nc.appName+"/"+pm.PublishingName, receiver) {
 						receivers[receiver.StreamID] = receiver
@@ -99,11 +113,10 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 				case "play":
 					pm := msg.MsgData.(*PlayMessage)
 					streamPath := nc.appName + "/" + pm.StreamName
-					sender := &RTMPSender{
-						NetStream: NetStream{
-							NetConnection: &nc,
-							StreamID:      msg.MessageStreamID,
-						},
+					sender := &RTMPSubscriber{}
+					sender.NetStream = NetStream{
+						&nc,
+						msg.MessageStreamID,
 					}
 					sender.OnEvent(ctx)
 					sender.ID = fmt.Sprintf("%s|%d", conn.RemoteAddr().String(), sender.StreamID)
@@ -113,13 +126,14 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 						sender.Begin()
 						sender.Response(NetStream_Play_Reset, Level_Status)
 						sender.Response(NetStream_Play_Start, Level_Status)
+						go sender.Play(sender)
 					} else {
 						sender.Response(NetStream_Play_Failed, Level_Error)
 					}
 				case "closeStream":
 					cm := msg.MsgData.(*CURDStreamMessage)
 					if stream, ok := senders[cm.StreamId]; ok {
-						stream.Unsubscribe()
+						stream.Bye()
 						delete(senders, cm.StreamId)
 					}
 				case "releaseStream":
@@ -128,7 +142,7 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 					p, ok := receivers[msg.MessageStreamID]
 					if ok {
 						amfobj["level"] = "_result"
-						p.Unpublish()
+						p.Bye()
 					} else {
 						amfobj["level"] = "_error"
 					}

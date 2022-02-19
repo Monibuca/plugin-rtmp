@@ -71,7 +71,7 @@ type RTMPPusher struct {
 	engine.Pusher
 }
 
-func (pusher *RTMPPusher) OnEvent(event any) any {
+func (pusher *RTMPPusher) OnEvent(event any) {
 	pusher.RTMPSender.OnEvent(event)
 	switch event.(type) {
 	case *engine.Stream:
@@ -87,11 +87,10 @@ func (pusher *RTMPPusher) OnEvent(event any) any {
 			}
 		}
 	}
-	return event
 }
 
 func (pusher *RTMPPusher) push() {
-	defer pusher.Unsubscribe()
+	defer pusher.Bye()
 	for {
 		msg, err := pusher.RecvMessage()
 		if err != nil {
@@ -136,7 +135,7 @@ type RTMPPuller struct {
 	engine.Puller
 }
 
-func (puller *RTMPPuller) OnEvent(event any) any {
+func (puller *RTMPPuller) OnEvent(event any) {
 	puller.RTMPReceiver.OnEvent(event)
 	switch event.(type) {
 	case *engine.Stream:
@@ -155,11 +154,10 @@ func (puller *RTMPPuller) OnEvent(event any) any {
 			}
 		}
 	}
-	return event
 }
 
 func (puller *RTMPPuller) pull() {
-	defer puller.Unpublish()
+	defer puller.Bye()
 	for {
 		msg, err := puller.RecvMessage()
 		if err != nil {

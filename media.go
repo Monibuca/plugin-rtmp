@@ -4,8 +4,6 @@ import (
 	"net"
 
 	. "github.com/Monibuca/engine/v4"
-	"github.com/Monibuca/engine/v4/codec"
-	"github.com/Monibuca/engine/v4/track"
 	"github.com/Monibuca/engine/v4/util"
 )
 
@@ -14,36 +12,23 @@ type RTMPSender struct {
 	NetStream
 }
 
-func (rtmp *RTMPSender) OnEvent(event any) any {
-	rtmp.Subscriber.OnEvent(event)
+func (rtmp *RTMPSender) OnEvent(event any) {
 	switch v := event.(type) {
-	case TrackRemoved:
+	case AudioDeConf:
+		if rtmp.AudioTrack.IsAAC() {
+			rtmp.sendAVMessage(0, net.Buffers{v.AVCC}, true, true)
+		}
+	case VideoDeConf:
+		rtmp.sendAVMessage(0, net.Buffers(v.AVCC), false, true)
+		// case TrackRemoved:
 		//TODO
-	case *track.Audio:
-		isPlaying := rtmp.IsPlaying()
-		if rtmp.AddTrack(v) {
-			if v.CodecID == codec.CodecID_AAC {
-				rtmp.sendAVMessage(0, net.Buffers{rtmp.Subscriber.AudioTrack.DecoderConfiguration.AVCC}, false, true)
-			}
-			// 如果不订阅视频则遇到音频也播放，否则需要等视频先播放
-			if !isPlaying && !rtmp.Config.SubVideo {
-				go rtmp.Play()
-			}
-		}
-	case *track.Video:
-		isPlaying := rtmp.IsPlaying()
-		if rtmp.AddTrack(v) {
-			rtmp.sendAVMessage(0, net.Buffers(rtmp.Subscriber.VideoTrack.DecoderConfiguration.AVCC), true, true)
-			if !isPlaying {
-				go rtmp.Play()
-			}
-		}
-	case *AudioFrame:
+	case AudioFrame:
 		rtmp.sendAVMessage(v.DeltaTime, v.AVCC, true, false)
-	case *VideoFrame:
+	case VideoFrame:
 		rtmp.sendAVMessage(v.DeltaTime, v.AVCC, false, false)
+	default:
+		rtmp.Subscriber.OnEvent(event)
 	}
-	return event
 }
 
 // 当发送音视频数据的时候,当块类型为12的时候,Chunk Message Header有一个字段TimeStamp,指明一个时间
@@ -104,7 +89,7 @@ func (r *RTMPSender) Response(code, level string) error {
 type RTMPReceiver struct {
 	Publisher
 	NetStream
-	absTs    map[uint32]uint32
+	absTs map[uint32]uint32
 }
 
 func (r *RTMPReceiver) Response(code, level string) error {
