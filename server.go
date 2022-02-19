@@ -126,7 +126,7 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 						sender.Begin()
 						sender.Response(NetStream_Play_Reset, Level_Status)
 						sender.Response(NetStream_Play_Start, Level_Status)
-						go sender.Play(sender)
+						go sender.PlayBlock(sender)
 					} else {
 						sender.Response(NetStream_Play_Failed, Level_Error)
 					}
