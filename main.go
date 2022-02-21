@@ -17,15 +17,30 @@ type RTMPConfig struct {
 	ChunkSize int
 }
 
-var _ PullPlugin = (*RTMPConfig)(nil)
-
-func (config *RTMPConfig) Update(override config.Config) {
-	plugin.Info("server rtmp start at", zap.String("listen addr", config.ListenAddr))
-	err := config.Listen(plugin, config)
-	if err == context.Canceled {
-		plugin.Info("rtmp listen shutdown")
-	} else {
-		plugin.Fatal("rtmp server", zap.Error(err))
+func (c *RTMPConfig) OnEvent(event any) {
+	switch v := event.(type) {
+	case FirstConfig:
+		if c.ListenAddr != "" {
+			plugin.Info("server rtmp start at", zap.String("listen addr", c.ListenAddr))
+			go c.Listen(plugin, c)
+		}
+	case config.Config:
+		plugin.CancelFunc()
+		if c.ListenAddr != "" {
+			plugin.Context, plugin.CancelFunc = context.WithCancel(Engine)
+			plugin.Info("server rtmp start at", zap.String("listen addr", c.ListenAddr))
+			go c.Listen(plugin, c)
+		}
+	case Puller:
+		client := RTMPPuller{
+			Puller: v,
+		}
+		client.OnEvent(PullEvent(0))
+	case Pusher:
+		client := RTMPPusher{
+			Pusher: v,
+		}
+		client.OnEvent(PushEvent(0))
 	}
 }
 
@@ -33,17 +48,3 @@ var plugin = InstallPlugin(&RTMPConfig{
 	ChunkSize: 4096,
 	TCP:       config.TCP{ListenAddr: ":1935"},
 })
-
-func (config *RTMPConfig) PullStream(puller Puller) {
-	client := RTMPPuller{
-		Puller: puller,
-	}
-	client.OnEvent(PullEvent(0))
-}
-
-func (config *RTMPConfig) PushStream(pusher Pusher) {
-	client := RTMPPusher{
-		Pusher: pusher,
-	}
-	client.OnEvent(PushEvent(0))
-}

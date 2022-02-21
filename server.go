@@ -102,7 +102,7 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 					}
 					receiver.Closer = &nc
 					receiver.OnEvent(ctx)
-					if plugin.Publish(nc.appName+"/"+pm.PublishingName, receiver) {
+					if plugin.Publish(nc.appName+"/"+pm.PublishingName, receiver) == nil {
 						receivers[receiver.StreamID] = receiver
 						receiver.absTs = make(map[uint32]uint32)
 						receiver.Begin()
@@ -120,7 +120,7 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 					}
 					sender.OnEvent(ctx)
 					sender.ID = fmt.Sprintf("%s|%d", conn.RemoteAddr().String(), sender.StreamID)
-					if plugin.Subscribe(streamPath, sender) {
+					if plugin.Subscribe(streamPath, sender) == nil {
 						senders[sender.StreamID] = sender
 						err = nc.SendStreamID(RTMP_USER_STREAM_IS_RECORDED, msg.MessageStreamID)
 						sender.Begin()
@@ -133,7 +133,7 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 				case "closeStream":
 					cm := msg.MsgData.(*CURDStreamMessage)
 					if stream, ok := senders[cm.StreamId]; ok {
-						stream.Bye()
+						stream.Stop()
 						delete(senders, cm.StreamId)
 					}
 				case "releaseStream":
@@ -142,7 +142,7 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 					p, ok := receivers[msg.MessageStreamID]
 					if ok {
 						amfobj["level"] = "_result"
-						p.Bye()
+						p.Stop()
 					} else {
 						amfobj["level"] = "_error"
 					}

@@ -15,11 +15,9 @@ type RTMPSender struct {
 func (rtmp *RTMPSender) OnEvent(event any) {
 	switch v := event.(type) {
 	case AudioDeConf:
-		if rtmp.AudioTrack.IsAAC() {
-			rtmp.sendAVMessage(0, net.Buffers{v.AVCC}, true, true)
-		}
+		rtmp.sendAVMessage(0, v.AVCC, true, true)
 	case VideoDeConf:
-		rtmp.sendAVMessage(0, net.Buffers(v.AVCC), false, true)
+		rtmp.sendAVMessage(0, v.AVCC, false, true)
 		// case TrackRemoved:
 		//TODO
 	case AudioFrame:

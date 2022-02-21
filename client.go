@@ -83,14 +83,13 @@ func (pusher *RTMPPusher) OnEvent(event any) {
 	case engine.PushEvent:
 		pusher.ReConnectCount++
 		if pusher.Stream == nil {
-			if plugin.Subscribe(pusher.StreamPath, pusher) {
-			}
+			plugin.Subscribe(pusher.StreamPath, pusher)
 		}
 	}
 }
 
 func (pusher *RTMPPusher) push() {
-	defer pusher.Bye()
+	defer pusher.Stop()
 	for {
 		msg, err := pusher.RecvMessage()
 		if err != nil {
@@ -149,15 +148,13 @@ func (puller *RTMPPuller) OnEvent(event any) {
 	case engine.PullEvent:
 		puller.ReConnectCount++
 		if puller.Stream == nil {
-			if plugin.Publish(puller.StreamPath, puller) {
-				break
-			}
+			plugin.Publish(puller.StreamPath, puller)
 		}
 	}
 }
 
 func (puller *RTMPPuller) pull() {
-	defer puller.Bye()
+	defer puller.Stop()
 	for {
 		msg, err := puller.RecvMessage()
 		if err != nil {
