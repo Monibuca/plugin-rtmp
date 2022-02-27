@@ -7,9 +7,9 @@ import (
 	"net"
 	"sync/atomic"
 
-	"github.com/Monibuca/engine/v4"
-	"github.com/Monibuca/engine/v4/util"
 	"go.uber.org/zap"
+	"m7s.live/engine/v4"
+	"m7s.live/engine/v4/util"
 )
 
 type NetStream struct {
@@ -50,7 +50,7 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 	ctx, cancel := context.WithCancel(engine.Engine)
 	defer func() {
 		nc.Close()
-		cancel()
+		cancel() //终止所有发布者和订阅者
 	}()
 	/* Handshake */
 	if err := nc.Handshake(); err != nil {
@@ -100,8 +100,7 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 							StreamID:      pm.StreamId,
 						},
 					}
-					receiver.Closer = &nc
-					receiver.OnEvent(ctx)
+					receiver.SetParentCtx(ctx)
 					if plugin.Publish(nc.appName+"/"+pm.PublishingName, receiver) == nil {
 						receivers[receiver.StreamID] = receiver
 						receiver.absTs = make(map[uint32]uint32)
@@ -118,7 +117,7 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 						&nc,
 						msg.MessageStreamID,
 					}
-					sender.OnEvent(ctx)
+					sender.SetParentCtx(ctx)
 					sender.ID = fmt.Sprintf("%s|%d", conn.RemoteAddr().String(), sender.StreamID)
 					if plugin.Subscribe(streamPath, sender) == nil {
 						senders[sender.StreamID] = sender

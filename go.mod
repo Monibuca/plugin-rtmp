@@ -1,4 +1,4 @@
-module github.com/Monibuca/plugin-rtmp/v4
+module m7s.live/plugin/rtmp/v4
 
 go 1.18
 

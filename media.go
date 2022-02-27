@@ -3,8 +3,8 @@ package rtmp
 import (
 	"net"
 
-	. "github.com/Monibuca/engine/v4"
-	"github.com/Monibuca/engine/v4/util"
+	. "m7s.live/engine/v4"
+	"m7s.live/engine/v4/util"
 )
 
 type RTMPSender struct {
@@ -18,11 +18,9 @@ func (rtmp *RTMPSender) OnEvent(event any) {
 		rtmp.sendAVMessage(0, v.AVCC, true, true)
 	case VideoDeConf:
 		rtmp.sendAVMessage(0, v.AVCC, false, true)
-		// case TrackRemoved:
-		//TODO
-	case AudioFrame:
+	case *AudioFrame:
 		rtmp.sendAVMessage(v.DeltaTime, v.AVCC, true, false)
-	case VideoFrame:
+	case *VideoFrame:
 		rtmp.sendAVMessage(v.DeltaTime, v.AVCC, false, false)
 	default:
 		rtmp.Subscriber.OnEvent(event)

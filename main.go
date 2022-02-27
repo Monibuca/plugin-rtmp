@@ -3,9 +3,9 @@ package rtmp
 import (
 	"context"
 
-	. "github.com/Monibuca/engine/v4"
-	"github.com/Monibuca/engine/v4/config"
 	"go.uber.org/zap"
+	. "m7s.live/engine/v4"
+	"m7s.live/engine/v4/config"
 )
 
 type RTMPConfig struct {
@@ -24,6 +24,13 @@ func (c *RTMPConfig) OnEvent(event any) {
 			plugin.Info("server rtmp start at", zap.String("listen addr", c.ListenAddr))
 			go c.Listen(plugin, c)
 		}
+		if c.PullOnStart {
+			for streamPath, url := range c.PullList {
+				if err := plugin.Pull(streamPath, url, new(RTMPPuller), false); err != nil {
+					plugin.Error("pull", zap.String("streamPath", streamPath), zap.String("url", url), zap.Error(err))
+				}
+			}
+		}
 	case config.Config:
 		plugin.CancelFunc()
 		if c.ListenAddr != "" {
@@ -31,16 +38,25 @@ func (c *RTMPConfig) OnEvent(event any) {
 			plugin.Info("server rtmp start at", zap.String("listen addr", c.ListenAddr))
 			go c.Listen(plugin, c)
 		}
-	case Puller:
-		client := RTMPPuller{
-			Puller: v,
+	case SEpublish:
+		for streamPath, url := range c.PushList {
+			if streamPath == v.Stream.Path {
+				if err := plugin.Push(streamPath, url, new(RTMPPusher), false); err != nil {
+					plugin.Error("push", zap.String("streamPath", streamPath), zap.String("url", url), zap.Error(err))
+				}
+			}
 		}
-		client.OnEvent(PullEvent(0))
-	case Pusher:
-		client := RTMPPusher{
-			Pusher: v,
+	case *Stream: //按需拉流
+		if c.PullOnSubscribe {
+			for streamPath, url := range c.PullList {
+				if streamPath == v.Path {
+					if err := plugin.Pull(streamPath, url, new(RTMPPuller), false); err != nil {
+						plugin.Error("pull", zap.String("streamPath", streamPath), zap.String("url", url), zap.Error(err))
+					}
+					break
+				}
+			}
 		}
-		client.OnEvent(PushEvent(0))
 	}
 }
 

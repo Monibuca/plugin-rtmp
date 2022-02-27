@@ -6,21 +6,22 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/Monibuca/engine/v4"
-	"github.com/Monibuca/engine/v4/util"
 	"go.uber.org/zap"
+	"m7s.live/engine/v4"
+	"m7s.live/engine/v4/log"
+	"m7s.live/engine/v4/util"
 )
 
-func NewRTMPClient(addr string) (client *NetConnection) {
+func NewRTMPClient(addr string) (client *NetConnection, err error) {
 	u, err := url.Parse(addr)
 	if err != nil {
 		plugin.Error("connect url parse", zap.Error(err))
-		return
+		return nil, err
 	}
 	conn, err := net.Dial("tcp", u.Host)
 	if err != nil {
 		plugin.Error("dial tcp", zap.String("host", u.Host), zap.Error(err))
-		return
+		return nil, err
 	}
 	client = &NetConnection{
 		TCPConn:            conn.(*net.TCPConn),
@@ -36,7 +37,7 @@ func NewRTMPClient(addr string) (client *NetConnection) {
 	err = client.ClientHandshake()
 	if err != nil {
 		plugin.Error("handshake", zap.Error(err))
-		return nil
+		return nil, err
 	}
 	connectArg := make(AMFObject)
 	connectArg["swfUrl"] = addr
@@ -48,7 +49,7 @@ func NewRTMPClient(addr string) (client *NetConnection) {
 	for {
 		msg, err := client.RecvMessage()
 		if err != nil {
-			return nil
+			return nil, err
 		}
 		switch msg.MessageTypeID {
 		case RTMP_MSG_AMF0_COMMAND:
@@ -57,9 +58,9 @@ func NewRTMPClient(addr string) (client *NetConnection) {
 			case "_result":
 				response := msg.MsgData.(*ResponseMessage)
 				if response.Infomation["code"] == NetConnection_Connect_Success {
-					return
+					return client, nil
 				} else {
-					return nil
+					return nil, err
 				}
 			}
 		}
@@ -71,25 +72,15 @@ type RTMPPusher struct {
 	engine.Pusher
 }
 
-func (pusher *RTMPPusher) OnEvent(event any) {
-	pusher.RTMPSender.OnEvent(event)
-	switch event.(type) {
-	case *engine.Stream:
-		pusher.NetConnection = NewRTMPClient(pusher.RemoteURL)
-		if pusher.NetConnection != nil {
-			pusher.SendCommand(SEND_CREATE_STREAM_MESSAGE, nil)
-			go pusher.push()
-		}
-	case engine.PushEvent:
-		pusher.ReConnectCount++
-		if pusher.Stream == nil {
-			plugin.Subscribe(pusher.StreamPath, pusher)
-		}
-	}
+func (pusher *RTMPPusher) Connect() (err error) {
+	pusher.ReConnectCount++
+	pusher.NetConnection, err = NewRTMPClient(pusher.RemoteURL)
+	log.Info("connect", zap.String("remoteURL", pusher.RemoteURL))
+	return
 }
 
-func (pusher *RTMPPusher) push() {
-	defer pusher.Stop()
+func (pusher *RTMPPusher) Push() {
+	pusher.SendCommand(SEND_CREATE_STREAM_MESSAGE, nil)
 	for {
 		msg, err := pusher.RecvMessage()
 		if err != nil {
@@ -124,9 +115,6 @@ func (pusher *RTMPPusher) push() {
 			}
 		}
 	}
-	if !pusher.Stream.IsClosed() && pusher.Reconnect() {
-		pusher.OnEvent(engine.PullEvent(pusher.ReConnectCount))
-	}
 }
 
 type RTMPPuller struct {
@@ -134,27 +122,16 @@ type RTMPPuller struct {
 	engine.Puller
 }
 
-func (puller *RTMPPuller) OnEvent(event any) {
-	puller.RTMPReceiver.OnEvent(event)
-	switch event.(type) {
-	case *engine.Stream:
-		puller.NetConnection = NewRTMPClient(puller.RemoteURL)
-		if puller.NetConnection != nil {
-			puller.absTs = make(map[uint32]uint32)
-			puller.SendCommand(SEND_CREATE_STREAM_MESSAGE, nil)
-			go puller.pull()
-			break
-		}
-	case engine.PullEvent:
-		puller.ReConnectCount++
-		if puller.Stream == nil {
-			plugin.Publish(puller.StreamPath, puller)
-		}
-	}
+func (puller *RTMPPuller) Connect() (err error) {
+	puller.ReConnectCount++
+	puller.NetConnection, err = NewRTMPClient(puller.RemoteURL)
+	log.Info("connect", zap.String("remoteURL", puller.RemoteURL))
+	return
 }
 
-func (puller *RTMPPuller) pull() {
-	defer puller.Stop()
+func (puller *RTMPPuller) Pull() {
+	puller.absTs = make(map[uint32]uint32)
+	puller.SendCommand(SEND_CREATE_STREAM_MESSAGE, nil)
 	for {
 		msg, err := puller.RecvMessage()
 		if err != nil {
