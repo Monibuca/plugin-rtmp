@@ -73,7 +73,6 @@ type RTMPPusher struct {
 }
 
 func (pusher *RTMPPusher) Connect() (err error) {
-	pusher.ReConnectCount++
 	pusher.NetConnection, err = NewRTMPClient(pusher.RemoteURL)
 	log.Info("connect", zap.String("remoteURL", pusher.RemoteURL))
 	return
@@ -123,7 +122,6 @@ type RTMPPuller struct {
 }
 
 func (puller *RTMPPuller) Connect() (err error) {
-	puller.ReConnectCount++
 	puller.NetConnection, err = NewRTMPClient(puller.RemoteURL)
 	log.Info("connect", zap.String("remoteURL", puller.RemoteURL))
 	return
