@@ -180,9 +180,13 @@ func processRtmp(conn net.Conn) {
 					err = nc.SendMessage(SEND_UNPUBLISH_RESPONSE_MESSAGE, amfobj)
 				}
 			case RTMP_MSG_AUDIO:
-				rec_audio(msg)
+				if rec_audio != nil {
+					rec_audio(msg)
+				}
 			case RTMP_MSG_VIDEO:
-				rec_video(msg)
+				if rec_video != nil {
+					rec_video(msg)
+				}
 			}
 			msg.Recycle()
 		} else {
