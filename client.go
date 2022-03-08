@@ -39,15 +39,15 @@ func NewRTMPClient(addr string) (client *NetConnection, err error) {
 		return nil, err
 	}
 	ps := strings.Split(u.Path, "/")
-	client.appName = ps[0]
+	client.appName = ps[1]
 	err = client.SendMessage(RTMP_MSG_CHUNK_SIZE, Uint32Message(conf.ChunkSize))
 	client.SendMessage(RTMP_MSG_AMF0_COMMAND, &CallMessage{
 		CommandMessage{"connect", 1},
 		AMFObject{
-			"app":       client.appName,
-			"flashVer":  "monibuca/" + engine.Engine.Version,
-			"swfUrl":    addr,
-			"tcUrl":     addr,
+			"app":      client.appName,
+			"flashVer": "monibuca/" + engine.Engine.Version,
+			"swfUrl":   addr,
+			"tcUrl":    addr,
 		},
 		nil,
 	})
@@ -154,7 +154,10 @@ func (puller *RTMPPuller) Pull() {
 					m := &PlayMessage{}
 					m.TransactionId = 1
 					m.CommandMessage.CommandName = "play"
-					m.StreamName = puller.Stream.StreamName
+					URL, _ := url.Parse(puller.RemoteURL)
+					ps := strings.Split(URL.Path, "/")
+					puller.Args = URL.Query()
+					m.StreamName = ps[len(ps)-1]
 					puller.SendMessage(RTMP_MSG_AMF0_COMMAND, m)
 					// if response, ok := msg.MsgData.(*ResponsePlayMessage); ok {
 					// 	if response.Object["code"] == "NetStream.Play.Start" {

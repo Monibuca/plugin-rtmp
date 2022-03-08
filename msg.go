@@ -109,8 +109,8 @@ func GetRtmpMessage(chunk *Chunk) error {
 		chunk.MsgData = Uint32Message(body.ReadUint32())
 	case RTMP_MSG_USER_CONTROL: // RTMP消息类型ID=4, 用户控制消息.客户端或服务端发送本消息通知对方用户的控制事件.
 		{
-			if len(chunk.Body) < 4 {
-				return errors.New("chunk.Body < 4")
+			if len(chunk.Body) < 2 {
+				return errors.New("UserControlMessage.Body < 2")
 			}
 			base := UserControlMessage{
 				EventType: body.ReadUint16(),
@@ -128,26 +128,23 @@ func GetRtmpMessage(chunk *Chunk) error {
 				}
 				chunk.MsgData = m
 			case RTMP_USER_STREAM_EOF, RTMP_USER_STREAM_DRY, RTMP_USER_STREAM_IS_RECORDED: // 服务端向客户端发送本事件通知客户端,数据回放完成.果没有发行额外的命令,就不再发送数据.客户端丢弃从流中接收的消息.4字节的事件数据表示,回放结束的流的ID.
-				m := &StreamIDMessage{
+				chunk.MsgData = &StreamIDMessage{
 					UserControlMessage: base,
 					StreamID:           body.ReadUint32(),
 				}
-				chunk.MsgData = m
 			case RTMP_USER_SET_BUFFLEN: // 客户端向服务端发送本事件,告知对方自己存储一个流的数据的缓存的长度(毫秒单位).当服务端开始处理一个流得时候发送本事件.事件数据的头四个字节表示流ID,后4个字节表示缓存长度(毫秒单位).
-				m := &SetBufferMessage{
+				chunk.MsgData = &SetBufferMessage{
 					StreamIDMessage: StreamIDMessage{
 						UserControlMessage: base,
 						StreamID:           body.ReadUint32(),
 					},
 					Millisecond: body.ReadUint32(),
 				}
-				chunk.MsgData = m
 			case RTMP_USER_PING_REQUEST: // 服务端通过本事件测试客户端是否可达.事件数据是4个字节的事件戳.代表服务调用本命令的本地时间.客户端在接收到kMsgPingRequest之后返回kMsgPingResponse事件
-				m := &PingRequestMessage{
+				chunk.MsgData = &PingRequestMessage{
 					UserControlMessage: base,
 					Timestamp:          body.ReadUint32(),
 				}
-				chunk.MsgData = m
 			case RTMP_USER_PING_RESPONSE, RTMP_USER_EMPTY: // 客户端向服务端发送本消息响应ping请求.事件数据是接kMsgPingRequest请求的时间.
 				chunk.MsgData = &base
 			default:
