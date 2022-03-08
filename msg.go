@@ -9,6 +9,7 @@ import (
 	"m7s.live/engine/v4/util"
 )
 
+// https://zhuanlan.zhihu.com/p/196743129
 const (
 	/* RTMP Message ID*/
 
@@ -225,14 +226,22 @@ func decodeCommandAMF0(chunk *Chunk) {
 			float64(-1),
 			true,
 		}
-		if amf.Len() > 0 {
-			m.Start = amf.readNumber()
-		}
-		if amf.Len() > 0 {
-			m.Duration = amf.readNumber()
-		}
-		if amf.Len() > 0 {
-			m.Reset = amf.readBool()
+		for i := 0; i < 3; i++ {
+			if v := amf.decodeObject(); v != nil {
+				switch vv := v.(type) {
+				case float64:
+					if i == 0 {
+						m.Start = vv
+					} else {
+						m.Duration = vv
+					}
+				case bool:
+					m.Reset = vv
+					i = 2
+				}
+			} else {
+				break
+			}
 		}
 		chunk.MsgData = m
 	case "play2":
@@ -498,10 +507,11 @@ func (msg *PlayMessage) Encode() []byte {
 	amf.writeString(msg.StreamName)
 
 	if msg.Start > 0 {
-		amf.writeNumber(float64(msg.Start))
+		amf.writeNumber(msg.Start)
 	}
+
 	if msg.Duration > 0 {
-		amf.writeNumber(float64(msg.Duration))
+		amf.writeNumber(msg.Duration)
 	}
 
 	amf.writeBool(msg.Reset)

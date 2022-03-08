@@ -7,20 +7,22 @@ github.com/Monibuca/plugin-rtmp
 ## 插件引入
 ```go
 import (
-    _ "github.com/Monibuca/plugin-rtmp"
+    _ "m7s.live/plugin/rtmp/v4"
 )
 ```
 
 ## 默认插件配置
 
-```toml
-[RTMP]
-ListenAddr = ":1935"
-ChunkSize = 512
+```yaml
+rtmp
+  tcp:
+    listenaddr: :1935
+    listennum: 0
+  chunksize: 512
 ```
 
-- ListenAddr是监听的地址
-- ChunkSize是分块大小
+- listenaddr是监听的地址
+- chunksize是输出分块大小
 
 ## 插件功能
 
@@ -39,3 +41,5 @@ ffmpeg -i **** -f flv rtmp://localhost/live/test
 ```bash
 ffplay -i rtmp://localhost/live/test
 ```
+
+### 从远端拉流到m7s

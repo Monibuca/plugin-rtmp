@@ -109,59 +109,20 @@ func (conn *NetConnection) ResponseCreateStream(tid uint64, streamID uint32) err
 	return conn.SendMessage(RTMP_MSG_AMF0_COMMAND, m)
 }
 
-func (conn *NetConnection) SendCommand(message string, args any) error {
-	switch message {
-	// case SEND_SET_BUFFER_LENGTH_MESSAGE:
-	// 	if args != nil {
-	// 		return errors.New(SEND_SET_BUFFER_LENGTH_MESSAGE + ", The parameter is nil")
-	// 	}
-	// 	m := new(SetBufferMessage)
-	// 	m.EventType = RTMP_USER_SET_BUFFLEN
-	// 	m.Millisecond = 100
-	// 	m.StreamID = conn.streamID
-	// 	return conn.writeMessage(RTMP_MSG_USER_CONTROL, m)
-
-	case SEND_CONNECT_RESPONSE_MESSAGE:
-		//if !ok {
-		//	errors.New(SEND_CONNECT_RESPONSE_MESSAGE + ", The parameter is AMFObjects(map[string]interface{})")
-		//}
-
-		pro := make(AMFObject)
-		info := make(AMFObject)
-
-		//for i, v := range data {
-		//	switch i {
-		//	case "fmsVer", "capabilities", "mode", "Author", "level", "code", "objectEncoding":
-		//		pro[i] = v
-		//	}
-		//}
-
-		pro["fmsVer"] = "monibuca/" + Engine.Version
-		pro["capabilities"] = 31
-		pro["mode"] = 1
-		pro["Author"] = "dexter"
-
-		info["level"] = Level_Status
-		info["code"] = NetConnection_Connect_Success
-		info["objectEncoding"] = conn.objectEncoding
-		m := new(ResponseConnectMessage)
-		m.CommandName = Response_Result
-		m.TransactionId = 1
-		m.Properties = pro
-		m.Infomation = info
-		return conn.SendMessage(RTMP_MSG_AMF0_COMMAND, m)
-	case SEND_UNPUBLISH_RESPONSE_MESSAGE:
-		data, ok := args.(AMFObject)
-		if !ok {
-			return errors.New(SEND_UNPUBLISH_RESPONSE_MESSAGE + ", The parameter is AMFObjects(map[string]interface{})")
-		}
-		m := new(CommandMessage)
-		m.TransactionId = data["tid"].(uint64)
-		m.CommandName = "releaseStream" + data["level"].(string)
-		return conn.SendMessage(RTMP_MSG_AMF0_COMMAND, m)
-	}
-	return errors.New("send message no exist")
-}
+// func (conn *NetConnection) SendCommand(message string, args any) error {
+// 	switch message {
+// 	// case SEND_SET_BUFFER_LENGTH_MESSAGE:
+// 	// 	if args != nil {
+// 	// 		return errors.New(SEND_SET_BUFFER_LENGTH_MESSAGE + ", The parameter is nil")
+// 	// 	}
+// 	// 	m := new(SetBufferMessage)
+// 	// 	m.EventType = RTMP_USER_SET_BUFFLEN
+// 	// 	m.Millisecond = 100
+// 	// 	m.StreamID = conn.streamID
+// 	// 	return conn.writeMessage(RTMP_MSG_USER_CONTROL, m)
+// 	}
+// 	return errors.New("send message no exist")
+// }
 
 func (conn *NetConnection) readChunk() (msg *Chunk, err error) {
 	head, err := conn.ReadByte()

@@ -151,16 +151,17 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 					}
 				case "releaseStream":
 					cm := msg.MsgData.(*ReleaseStreamMessage)
-					amfobj := make(AMFObject)
-					p, ok := receivers[msg.MessageStreamID]
-					if ok {
-						amfobj["level"] = "_result"
+					m := &CommandMessage{
+						CommandName:   "releaseStream",
+						TransactionId: cm.TransactionId,
+					}
+					if p, ok := receivers[msg.MessageStreamID]; ok {
+						m.CommandName += "_result"
 						p.Stop()
 					} else {
-						amfobj["level"] = "_error"
+						m.CommandName += "_error"
 					}
-					amfobj["tid"] = cm.TransactionId
-					err = nc.SendCommand(SEND_UNPUBLISH_RESPONSE_MESSAGE, amfobj)
+					err = nc.SendMessage(RTMP_MSG_AMF0_COMMAND, m)
 				}
 			case RTMP_MSG_AUDIO:
 				if r, ok := receivers[msg.MessageStreamID]; ok {
