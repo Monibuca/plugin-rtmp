@@ -59,8 +59,8 @@ func (c *RTMPConfig) OnEvent(event any) {
 		}
 	}
 }
-
-var plugin = InstallPlugin(&RTMPConfig{
+var conf = &RTMPConfig{
 	ChunkSize: 4096,
 	TCP:       config.TCP{ListenAddr: ":1935"},
-})
+}
+var plugin = InstallPlugin(conf)

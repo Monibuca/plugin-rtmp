@@ -120,63 +120,7 @@ func (conn *NetConnection) SendCommand(message string, args any) error {
 	// 	m.Millisecond = 100
 	// 	m.StreamID = conn.streamID
 	// 	return conn.writeMessage(RTMP_MSG_USER_CONTROL, m)
-	case SEND_CREATE_STREAM_MESSAGE:
-		if args != nil {
-			return errors.New(SEND_CREATE_STREAM_MESSAGE + ", The parameter is nil")
-		}
 
-		m := &CreateStreamMessage{}
-		m.CommandName = "createStream"
-		m.TransactionId = 2
-		return conn.SendMessage(RTMP_MSG_AMF0_COMMAND, m)
-	case SEND_PLAY_MESSAGE:
-		data, ok := args.(AMFObject)
-		if !ok {
-			errors.New(SEND_PLAY_MESSAGE + ", The parameter is AMFObject")
-		}
-		m := new(PlayMessage)
-		m.CommandName = "play"
-		m.TransactionId = 1
-		for i, v := range data {
-			if i == "StreamName" {
-				m.StreamName = v.(string)
-			} else if i == "Start" {
-				m.Start = v.(uint64)
-			} else if i == "Duration" {
-				m.Duration = v.(uint64)
-			} else if i == "Reset" {
-				m.Reset = v.(bool)
-			}
-		}
-		return conn.SendMessage(RTMP_MSG_AMF0_COMMAND, m)
-	case SEND_PLAY_RESPONSE_MESSAGE:
-		data, ok := args.(AMFObject)
-		if !ok {
-			errors.New(SEND_PLAY_RESPONSE_MESSAGE + ", The parameter is AMFObject")
-		}
-
-		obj := make(AMFObject)
-		var streamID uint32
-
-		for i, v := range data {
-			switch i {
-			case "code", "level":
-				obj[i] = v
-			case "streamid":
-				if t, ok := v.(uint32); ok {
-					streamID = t
-				}
-			}
-		}
-
-		obj["clientid"] = 1
-
-		m := new(ResponsePlayMessage)
-		m.CommandName = Response_OnStatus
-		m.TransactionId = 0
-		m.Object = obj
-		m.StreamID = streamID
-		return conn.SendMessage(RTMP_MSG_AMF0_COMMAND, m)
 	case SEND_CONNECT_RESPONSE_MESSAGE:
 		//if !ok {
 		//	errors.New(SEND_CONNECT_RESPONSE_MESSAGE + ", The parameter is AMFObjects(map[string]interface{})")
@@ -206,33 +150,10 @@ func (conn *NetConnection) SendCommand(message string, args any) error {
 		m.Properties = pro
 		m.Infomation = info
 		return conn.SendMessage(RTMP_MSG_AMF0_COMMAND, m)
-	case SEND_CONNECT_MESSAGE:
-		data, ok := args.(AMFObject)
-		if !ok {
-			errors.New(SEND_CONNECT_MESSAGE + ", The parameter is AMFObjects(map[string]interface{})")
-		}
-
-		obj := make(AMFObject)
-		info := make(AMFObject)
-
-		for i, v := range data {
-			switch i {
-			case "videoFunction", "objectEncoding", "fpad", "flashVer", "capabilities", "pageUrl", "swfUrl", "tcUrl", "videoCodecs", "app", "audioCodecs":
-				obj[i] = v
-			}
-		}
-
-		m := new(CallMessage)
-		m.CommandName = "connect"
-		m.TransactionId = 1
-		m.Object = obj
-		m.Optional = info
-		return conn.SendMessage(RTMP_MSG_AMF0_COMMAND, m)
-
 	case SEND_UNPUBLISH_RESPONSE_MESSAGE:
 		data, ok := args.(AMFObject)
 		if !ok {
-			errors.New(SEND_UNPUBLISH_RESPONSE_MESSAGE + ", The parameter is AMFObjects(map[string]interface{})")
+			return errors.New(SEND_UNPUBLISH_RESPONSE_MESSAGE + ", The parameter is AMFObjects(map[string]interface{})")
 		}
 		m := new(CommandMessage)
 		m.TransactionId = data["tid"].(uint64)

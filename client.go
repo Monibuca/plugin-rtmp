@@ -8,7 +8,6 @@ import (
 
 	"go.uber.org/zap"
 	"m7s.live/engine/v4"
-	"m7s.live/engine/v4/log"
 	"m7s.live/engine/v4/util"
 )
 
@@ -26,7 +25,7 @@ func NewRTMPClient(addr string) (client *NetConnection, err error) {
 	client = &NetConnection{
 		TCPConn:            conn.(*net.TCPConn),
 		Reader:             bufio.NewReader(conn),
-		writeChunkSize:     RTMP_DEFAULT_CHUNK_SIZE,
+		writeChunkSize:     conf.ChunkSize,
 		readChunkSize:      RTMP_DEFAULT_CHUNK_SIZE,
 		rtmpHeader:         make(map[uint32]*ChunkHeader),
 		incompleteRtmpBody: make(map[uint32]util.Buffer),
@@ -45,7 +44,12 @@ func NewRTMPClient(addr string) (client *NetConnection, err error) {
 	connectArg["flashVer"] = "monibuca/" + engine.Engine.Version
 	ps := strings.Split(u.Path, "/")
 	connectArg["app"] = ps[0]
-	client.SendCommand(SEND_CONNECT_MESSAGE, connectArg)
+	err = client.SendMessage(RTMP_MSG_CHUNK_SIZE, Uint32Message(conf.ChunkSize))
+	client.SendMessage(RTMP_MSG_AMF0_COMMAND, &CallMessage{
+		CommandMessage{"connect", 1},
+		connectArg,
+		nil,
+	})
 	for {
 		msg, err := client.RecvMessage()
 		if err != nil {
@@ -74,12 +78,12 @@ type RTMPPusher struct {
 
 func (pusher *RTMPPusher) Connect() (err error) {
 	pusher.NetConnection, err = NewRTMPClient(pusher.RemoteURL)
-	log.Info("connect", zap.String("remoteURL", pusher.RemoteURL))
+	plugin.Info("connect", zap.String("remoteURL", pusher.RemoteURL))
 	return
 }
 
 func (pusher *RTMPPusher) Push() {
-	pusher.SendCommand(SEND_CREATE_STREAM_MESSAGE, nil)
+	pusher.SendMessage(RTMP_MSG_AMF0_COMMAND, &CommandMessage{"createStream", 2})
 	for {
 		msg, err := pusher.RecvMessage()
 		if err != nil {
@@ -123,13 +127,13 @@ type RTMPPuller struct {
 
 func (puller *RTMPPuller) Connect() (err error) {
 	puller.NetConnection, err = NewRTMPClient(puller.RemoteURL)
-	log.Info("connect", zap.String("remoteURL", puller.RemoteURL))
+	plugin.Info("connect", zap.String("remoteURL", puller.RemoteURL))
 	return
 }
 
 func (puller *RTMPPuller) Pull() {
 	puller.absTs = make(map[uint32]uint32)
-	puller.SendCommand(SEND_CREATE_STREAM_MESSAGE, nil)
+	puller.SendMessage(RTMP_MSG_AMF0_COMMAND, &CommandMessage{"createStream", 2})
 	for {
 		msg, err := puller.RecvMessage()
 		if err != nil {
@@ -147,6 +151,7 @@ func (puller *RTMPPuller) Pull() {
 				if response, ok := msg.MsgData.(*ResponseCreateStreamMessage); ok {
 					puller.StreamID = response.StreamId
 					m := &PlayMessage{}
+					m.TransactionId = 1
 					m.CommandMessage.CommandName = "play"
 					m.StreamName = puller.Stream.StreamName
 					puller.SendMessage(RTMP_MSG_AMF0_COMMAND, m)

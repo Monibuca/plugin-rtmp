@@ -133,6 +133,7 @@ func (amf *AMF) decodeObject() (obj AMFValue) {
 
 func (amf *AMF) writeObject(t AMFObject) {
 	if t == nil {
+		amf.writeNull()
 		return
 	}
 	amf.Malloc(1)[0] = AMF0_OBJECT
@@ -223,7 +224,9 @@ func (amf *AMF) readObject() (m AMFObject) {
 	if amf.Len() == 0 {
 		return nil
 	}
-	amf.ReadByte()
+	if amf.ReadByte() == AMF0_NULL {
+		return nil
+	}
 	m = make(AMFObject, 0)
 	for {
 		k := amf.readString1()

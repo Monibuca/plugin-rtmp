@@ -87,7 +87,21 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 						LimitType:                 byte(2),
 					})
 					err = nc.SendStreamID(RTMP_USER_STREAM_BEGIN, 0)
-					err = nc.SendCommand(SEND_CONNECT_RESPONSE_MESSAGE, nc.objectEncoding)
+					m := new(ResponseConnectMessage)
+					m.CommandName = Response_Result
+					m.TransactionId = 1
+					m.Properties = AMFObject{
+						"fmsVer":       "monibuca/" + engine.Engine.Version,
+						"capabilities": 31,
+						"mode":         1,
+						"Author":       "dexter",
+					}
+					m.Infomation = AMFObject{
+						"level":          Level_Status,
+						"code":           NetConnection_Connect_Success,
+						"objectEncoding": nc.objectEncoding,
+					}
+					err = nc.SendMessage(RTMP_MSG_AMF0_COMMAND, m)
 				case "createStream":
 					streamId := atomic.AddUint32(&gstreamid, 1)
 					plugin.Info("createStream:", zap.Uint32("streamId", streamId))

@@ -215,19 +215,26 @@ func decodeCommandAMF0(chunk *Chunk) {
 		}
 	case "createStream":
 		amf.readNull()
-		chunk.MsgData = &CreateStreamMessage{
-			cmdMsg, amf.readObject(),
-		}
-
+		chunk.MsgData = &cmdMsg
 	case "play":
 		amf.readNull()
-		chunk.MsgData = &PlayMessage{
+		m := &PlayMessage{
 			cmdMsg,
 			amf.readString(),
-			uint64(amf.readNumber()),
-			uint64(amf.readNumber()),
-			amf.readBool(),
+			float64(-2),
+			float64(-1),
+			true,
 		}
+		if amf.Len() > 0 {
+			m.Start = amf.readNumber()
+		}
+		if amf.Len() > 0 {
+			m.Duration = amf.readNumber()
+		}
+		if amf.Len() > 0 {
+			m.Reset = amf.readBool()
+		}
+		chunk.MsgData = m
 	case "play2":
 		amf.readNull()
 		chunk.MsgData = &Play2Message{
@@ -421,7 +428,9 @@ func (msg *CallMessage) Encode() []byte {
 	amf.writeString(msg.CommandName)
 	amf.writeNumber(float64(msg.TransactionId))
 	amf.writeObject(msg.Object)
-	amf.writeObject(msg.Optional)
+	if msg.Optional != nil {
+		amf.writeObject(msg.Optional)
+	}
 	return amf.Buffer
 }
 
@@ -438,19 +447,6 @@ func (msg *CallMessage) Encode3() []byte {
 // Create Stream Message.
 // The client sends this command to the server to create a logical channel for message communication The publishing of audio,
 // video, and metadata is carried out over stream channel created using the createStream command.
-
-type CreateStreamMessage struct {
-	CommandMessage
-	Object AMFObject
-}
-
-func (msg *CreateStreamMessage) Encode() []byte {
-	var amf AMF
-	amf.writeString(msg.CommandName)
-	amf.writeNumber(float64(msg.TransactionId))
-	amf.writeObject(msg.Object)
-	return amf.Buffer
-}
 
 /*
 func (msg *CreateStreamMessage) Encode3() {
@@ -481,8 +477,8 @@ func (msg *CreateStreamMessage) Encode3() {
 type PlayMessage struct {
 	CommandMessage
 	StreamName string
-	Start      uint64
-	Duration   uint64
+	Start      float64
+	Duration   float64
 	Reset      bool
 }
 
