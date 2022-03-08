@@ -38,16 +38,17 @@ func NewRTMPClient(addr string) (client *NetConnection, err error) {
 		plugin.Error("handshake", zap.Error(err))
 		return nil, err
 	}
-	connectArg := make(AMFObject)
-	connectArg["swfUrl"] = addr
-	connectArg["tcUrl"] = addr
-	connectArg["flashVer"] = "monibuca/" + engine.Engine.Version
 	ps := strings.Split(u.Path, "/")
-	connectArg["app"] = ps[0]
+	client.appName = ps[0]
 	err = client.SendMessage(RTMP_MSG_CHUNK_SIZE, Uint32Message(conf.ChunkSize))
 	client.SendMessage(RTMP_MSG_AMF0_COMMAND, &CallMessage{
 		CommandMessage{"connect", 1},
-		connectArg,
+		AMFObject{
+			"app":       client.appName,
+			"flashVer":  "monibuca/" + engine.Engine.Version,
+			"swfUrl":    addr,
+			"tcUrl":     addr,
+		},
 		nil,
 	})
 	for {
