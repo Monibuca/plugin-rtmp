@@ -30,7 +30,7 @@ type RTMPSubscriber struct {
 func (s *RTMPSubscriber) OnEvent(event any) {
 	switch event.(type) {
 	case engine.SEclose:
-		s.Response(NetStream_Play_Stop, Level_Status)
+		s.Response(0, NetStream_Play_Stop, Level_Status)
 	}
 	s.RTMPSender.OnEvent(event)
 }
@@ -119,9 +119,9 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 						receivers[receiver.StreamID] = receiver
 						receiver.absTs = make(map[uint32]uint32)
 						receiver.Begin()
-						err = receiver.Response(NetStream_Publish_Start, Level_Status)
+						err = receiver.Response(pm.TransactionId, NetStream_Publish_Start, Level_Status)
 					} else {
-						err = receiver.Response(NetStream_Publish_BadName, Level_Error)
+						err = receiver.Response(pm.TransactionId, NetStream_Publish_BadName, Level_Error)
 					}
 				case "play":
 					pm := msg.MsgData.(*PlayMessage)
@@ -137,11 +137,11 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 						senders[sender.StreamID] = sender
 						err = nc.SendStreamID(RTMP_USER_STREAM_IS_RECORDED, msg.MessageStreamID)
 						sender.Begin()
-						sender.Response(NetStream_Play_Reset, Level_Status)
-						sender.Response(NetStream_Play_Start, Level_Status)
+						sender.Response(pm.TransactionId, NetStream_Play_Reset, Level_Status)
+						sender.Response(pm.TransactionId, NetStream_Play_Start, Level_Status)
 						go sender.PlayBlock(sender)
 					} else {
-						sender.Response(NetStream_Play_Failed, Level_Error)
+						sender.Response(pm.TransactionId, NetStream_Play_Failed, Level_Error)
 					}
 				case "closeStream":
 					cm := msg.MsgData.(*CURDStreamMessage)

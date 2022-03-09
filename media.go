@@ -69,14 +69,14 @@ func (sender *RTMPSender) sendAVMessage(ts uint32, payload net.Buffers, isAudio 
 	return nil
 }
 
-func (r *RTMPSender) Response(code, level string) error {
+func (r *RTMPSender) Response(tid uint64, code, level string) error {
 	m := new(ResponsePlayMessage)
 	m.CommandName = Response_OnStatus
-	m.TransactionId = 0
+	m.TransactionId = tid
 	m.Object = AMFObject{
-		"code":     code,
-		"level":    level,
-		"clientid": 1,
+		"code":        code,
+		"level":       level,
+		"description": "",
 	}
 	m.StreamID = r.StreamID
 	return r.SendMessage(RTMP_MSG_AMF0_COMMAND, m)
@@ -88,14 +88,14 @@ type RTMPReceiver struct {
 	absTs map[uint32]uint32
 }
 
-func (r *RTMPReceiver) Response(code, level string) error {
+func (r *RTMPReceiver) Response(tid uint64, code, level string) error {
 	m := new(ResponsePublishMessage)
 	m.CommandName = Response_OnStatus
-	m.TransactionId = 0
+	m.TransactionId = tid
 	m.Infomation = AMFObject{
-		"code":     code,
-		"level":    level,
-		"clientid": 1,
+		"code":        code,
+		"level":       level,
+		"description": "",
 	}
 	m.StreamID = r.StreamID
 	return r.SendMessage(RTMP_MSG_AMF0_COMMAND, m)

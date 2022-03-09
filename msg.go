@@ -760,7 +760,6 @@ func (msg *ResponsePublishMessage) Encode() []byte {
 	var amf AMF
 	amf.writeString(msg.CommandName)
 	amf.writeNumber(float64(msg.TransactionId))
-	amf.writeNull()
 	amf.writeObject(msg.Properties)
 	amf.writeObject(msg.Infomation)
 	return amf.Buffer
