@@ -21,7 +21,7 @@ func (ns *NetStream) Begin() {
 	ns.SendStreamID(RTMP_USER_STREAM_BEGIN, ns.StreamID)
 }
 
-var gstreamid = uint32(64)
+var gstreamid uint32
 
 type RTMPSubscriber struct {
 	RTMPSender

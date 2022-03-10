@@ -17,6 +17,9 @@ func NewRTMPClient(addr string) (client *NetConnection, err error) {
 		plugin.Error("connect url parse", zap.Error(err))
 		return nil, err
 	}
+	if strings.Count(u.Host, ":") == 0 {
+		u.Host += ":1935"
+	}
 	conn, err := net.Dial("tcp", u.Host)
 	if err != nil {
 		plugin.Error("dial tcp", zap.String("host", u.Host), zap.Error(err))
