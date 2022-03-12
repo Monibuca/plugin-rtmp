@@ -217,7 +217,10 @@ func decodeCommandAMF0(chunk *Chunk) {
 	case "play":
 		amf.readNull()
 		m := &PlayMessage{
-			cmdMsg,
+			CURDStreamMessage{
+				cmdMsg,
+				chunk.MessageStreamID,
+			},
 			amf.readString(),
 			float64(-2),
 			float64(-1),
@@ -292,7 +295,7 @@ func decodeCommandAMF0(chunk *Chunk) {
 			cmdMsg,
 			amf.readBool(),
 		}
-	case "_result", "_error", "onStatus":
+	case Response_Result, Response_Error, Response_OnStatus:
 		if cmdMsg.TransactionId == 2 {
 			chunk.MsgData = &ResponseCreateStreamMessage{
 				cmdMsg, amf.readObject(), uint32(amf.readNumber()),
@@ -481,7 +484,7 @@ func (msg *CreateStreamMessage) Encode3() {
 // Play Message
 // The client sends this command to the server to play a stream. A playlist can also be created using this command multiple times
 type PlayMessage struct {
-	CommandMessage
+	CURDStreamMessage
 	StreamName string
 	Start      float64
 	Duration   float64
@@ -585,7 +588,7 @@ type PublishMessage struct {
 // “append”:流被发布并且附加到一个文件之后.如果没有发现文件则创建一个文件.
 // “live”:发布直播数据而不录制到文件
 
-func (msg *PublishMessage) Encode0() []byte {
+func (msg *PublishMessage) Encode() []byte {
 	var amf AMF
 	amf.writeString(msg.CommandName)
 	amf.writeNumber(float64(msg.TransactionId))

@@ -35,9 +35,10 @@ func (s *RTMPSubscriber) OnEvent(event any) {
 	s.RTMPSender.OnEvent(event)
 }
 func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
+	defer conn.Close()
 	senders := make(map[uint32]*RTMPSubscriber)
 	receivers := make(map[uint32]*RTMPReceiver)
-	nc := NetConnection{
+	nc := &NetConnection{
 		TCPConn:            conn,
 		Reader:             bufio.NewReader(conn),
 		writeChunkSize:     RTMP_DEFAULT_CHUNK_SIZE,
@@ -48,10 +49,7 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 		tmpBuf:             make([]byte, 4),
 	}
 	ctx, cancel := context.WithCancel(engine.Engine)
-	defer func() {
-		nc.Close()
-		cancel() //终止所有发布者和订阅者
-	}()
+	defer cancel()
 	/* Handshake */
 	if err := nc.Handshake(); err != nil {
 		plugin.Error("handshake", zap.Error(err))
@@ -69,11 +67,10 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 				}
 				cmd := msg.MsgData.(Commander).GetCommand()
 				plugin.Debug("recv cmd", zap.String("commandName", cmd.CommandName), zap.Uint32("streamID", msg.MessageStreamID))
-				switch cmd.CommandName {
-				case "connect":
-					connect := msg.MsgData.(*CallMessage)
-					app := connect.Object["app"]                       // 客户端要连接到的服务应用名
-					objectEncoding := connect.Object["objectEncoding"] // AMF编码方法
+				switch cmd := msg.MsgData.(type) {
+				case *CallMessage: //connect
+					app := cmd.Object["app"]                       // 客户端要连接到的服务应用名
+					objectEncoding := cmd.Object["objectEncoding"] // AMF编码方法
 					if objectEncoding != nil {
 						nc.objectEncoding = objectEncoding.(float64)
 					}
@@ -102,66 +99,63 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 						"objectEncoding": nc.objectEncoding,
 					}
 					err = nc.SendMessage(RTMP_MSG_AMF0_COMMAND, m)
-				case "createStream":
+				case *CommandMessage: // "createStream"
 					streamId := atomic.AddUint32(&gstreamid, 1)
 					plugin.Info("createStream:", zap.Uint32("streamId", streamId))
 					nc.ResponseCreateStream(cmd.TransactionId, streamId)
-				case "publish":
-					pm := msg.MsgData.(*PublishMessage)
+				case *CURDStreamMessage:
+					if stream, ok := senders[cmd.StreamId]; ok {
+						stream.Stop()
+						delete(senders, cmd.StreamId)
+					}
+				case *ReleaseStreamMessage:
+					m := &CommandMessage{
+						CommandName:   "releaseStream_error",
+						TransactionId: cmd.TransactionId,
+					}
+					s := engine.Streams.Get(nc.appName + "/" + cmd.StreamName)
+					if s != nil && s.Publisher != nil {
+						if p, ok := s.Publisher.(*RTMPReceiver); ok {
+							m.CommandName = "releaseStream_result"
+							p.Stop()
+							delete(receivers, p.StreamID)
+						}
+					}
+					err = nc.SendMessage(RTMP_MSG_AMF0_COMMAND, m)
+				case *PublishMessage:
 					receiver := &RTMPReceiver{
 						NetStream: NetStream{
-							NetConnection: &nc,
-							StreamID:      pm.StreamId,
+							NetConnection: nc,
+							StreamID:      cmd.StreamId,
 						},
 					}
 					receiver.SetParentCtx(ctx)
-					if plugin.Publish(nc.appName+"/"+pm.PublishingName, receiver) == nil {
-						receivers[receiver.StreamID] = receiver
+					if plugin.Publish(nc.appName+"/"+cmd.PublishingName, receiver) == nil {
+						receivers[cmd.StreamId] = receiver
 						receiver.absTs = make(map[uint32]uint32)
 						receiver.Begin()
-						err = receiver.Response(pm.TransactionId, NetStream_Publish_Start, Level_Status)
+						err = receiver.Response(cmd.TransactionId, NetStream_Publish_Start, Level_Status)
 					} else {
-						err = receiver.Response(pm.TransactionId, NetStream_Publish_BadName, Level_Error)
+						err = receiver.Response(cmd.TransactionId, NetStream_Publish_BadName, Level_Error)
 					}
-				case "play":
-					pm := msg.MsgData.(*PlayMessage)
-					streamPath := nc.appName + "/" + pm.StreamName
+				case *PlayMessage:
+					streamPath := nc.appName + "/" + cmd.StreamName
 					sender := &RTMPSubscriber{}
 					sender.NetStream = NetStream{
-						&nc,
-						msg.MessageStreamID,
+						nc,
+						cmd.StreamId,
 					}
 					sender.SetParentCtx(ctx)
 					sender.ID = fmt.Sprintf("%s|%d", conn.RemoteAddr().String(), sender.StreamID)
-					if plugin.Subscribe(streamPath, sender) == nil {
+					if plugin.Subscribe(streamPath, sender) != nil {
+						sender.Response(cmd.TransactionId, NetStream_Play_Failed, Level_Error)
+					} else {
 						senders[sender.StreamID] = sender
-						err = nc.SendStreamID(RTMP_USER_STREAM_IS_RECORDED, msg.MessageStreamID)
 						sender.Begin()
-						sender.Response(pm.TransactionId, NetStream_Play_Reset, Level_Status)
-						sender.Response(pm.TransactionId, NetStream_Play_Start, Level_Status)
+						sender.Response(cmd.TransactionId, NetStream_Play_Reset, Level_Status)
+						sender.Response(cmd.TransactionId, NetStream_Play_Start, Level_Status)
 						go sender.PlayBlock(sender)
-					} else {
-						sender.Response(pm.TransactionId, NetStream_Play_Failed, Level_Error)
 					}
-				case "closeStream":
-					cm := msg.MsgData.(*CURDStreamMessage)
-					if stream, ok := senders[cm.StreamId]; ok {
-						stream.Stop()
-						delete(senders, cm.StreamId)
-					}
-				case "releaseStream":
-					cm := msg.MsgData.(*ReleaseStreamMessage)
-					m := &CommandMessage{
-						CommandName:   "releaseStream",
-						TransactionId: cm.TransactionId,
-					}
-					if p, ok := receivers[msg.MessageStreamID]; ok {
-						m.CommandName += "_result"
-						p.Stop()
-					} else {
-						m.CommandName += "_error"
-					}
-					err = nc.SendMessage(RTMP_MSG_AMF0_COMMAND, m)
 				}
 			case RTMP_MSG_AUDIO:
 				if r, ok := receivers[msg.MessageStreamID]; ok {
@@ -173,7 +167,6 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 				}
 			}
 		} else {
-			plugin.Error("receive", zap.Error(err))
 			return
 		}
 	}

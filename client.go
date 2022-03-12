@@ -88,6 +88,7 @@ func (pusher *RTMPPusher) Connect() (err error) {
 
 func (pusher *RTMPPusher) Push() {
 	pusher.SendMessage(RTMP_MSG_AMF0_COMMAND, &CommandMessage{"createStream", 2})
+	defer pusher.Stop()
 	for {
 		msg, err := pusher.RecvMessage()
 		if err != nil {
@@ -97,24 +98,27 @@ func (pusher *RTMPPusher) Push() {
 		case RTMP_MSG_AMF0_COMMAND:
 			cmd := msg.MsgData.(Commander).GetCommand()
 			switch cmd.CommandName {
-			case "_result":
+			case Response_Result, Response_OnStatus:
 				if response, ok := msg.MsgData.(*ResponseCreateStreamMessage); ok {
 					pusher.StreamID = response.StreamId
+					URL, _ := url.Parse(pusher.RemoteURL)
+					ps := strings.Split(URL.Path, "/")
+					pusher.Args = URL.Query()
 					m := &PublishMessage{
 						CURDStreamMessage{
 							CommandMessage{
 								"publish",
-								0,
+								1,
 							},
 							response.StreamId,
 						},
-						pusher.Stream.StreamName,
+						ps[len(ps)-1],
 						"live",
 					}
 					pusher.SendMessage(RTMP_MSG_AMF0_COMMAND, m)
 				} else if response, ok := msg.MsgData.(*ResponsePublishMessage); ok {
-					if response.Infomation["code"] == "NetStream.Publish.Start" {
-
+					if response.Infomation["code"] == NetStream_Publish_Start {
+						go pusher.PlayBlock(pusher)
 					} else {
 						return
 					}
@@ -155,6 +159,7 @@ func (puller *RTMPPuller) Pull() {
 				if response, ok := msg.MsgData.(*ResponseCreateStreamMessage); ok {
 					puller.StreamID = response.StreamId
 					m := &PlayMessage{}
+					m.StreamId = response.StreamId
 					m.TransactionId = 1
 					m.CommandMessage.CommandName = "play"
 					URL, _ := url.Parse(puller.RemoteURL)
