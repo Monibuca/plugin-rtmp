@@ -84,7 +84,7 @@ type NetConnection struct {
 	totalRead          uint32 // 总共读了多少字节
 	writeChunkSize     int
 	readChunkSize      int
-	incompleteRtmpBody map[uint32]util.Buffer  // 完整的RtmpBody,在网络上是被分成一块一块的,需要将其组装起来
+	incompleteRtmpBody map[uint32]*util.Buffer // 完整的RtmpBody,在网络上是被分成一块一块的,需要将其组装起来
 	rtmpHeader         map[uint32]*ChunkHeader // RtmpHeader
 	objectEncoding     float64
 	appName            string
@@ -160,8 +160,9 @@ func (conn *NetConnection) readChunk() (msg *Chunk, err error) {
 	}
 	msgLen := int(h.MessageLength)
 
-	if !ok || currentBody.Len() == 0 {
-		currentBody = util.Buffer(make([]byte, 0, msgLen))
+	if !ok {
+		newBuffer := util.Buffer(make([]byte, 0, msgLen))
+		currentBody = &newBuffer
 		conn.incompleteRtmpBody[ChunkStreamID] = currentBody
 	}
 
@@ -182,7 +183,6 @@ func (conn *NetConnection) readChunk() (msg *Chunk, err error) {
 		}
 		err = GetRtmpMessage(msg)
 	}
-	conn.incompleteRtmpBody[ChunkStreamID] = currentBody
 	return
 }
 

@@ -31,10 +31,9 @@ func NewRTMPClient(addr string) (client *NetConnection, err error) {
 		writeChunkSize:     conf.ChunkSize,
 		readChunkSize:      RTMP_DEFAULT_CHUNK_SIZE,
 		rtmpHeader:         make(map[uint32]*ChunkHeader),
-		incompleteRtmpBody: make(map[uint32]util.Buffer),
+		incompleteRtmpBody: make(map[uint32]*util.Buffer),
 		bandwidth:          RTMP_MAX_CHUNK_SIZE << 3,
 		tmpBuf:             make([]byte, 4),
-		// subscribers:        make(map[uint32]*engine.Subscriber),
 	}
 	err = client.ClientHandshake()
 	if err != nil {
@@ -104,7 +103,7 @@ func (pusher *RTMPPusher) Push() {
 					URL, _ := url.Parse(pusher.RemoteURL)
 					ps := strings.Split(URL.Path, "/")
 					pusher.Args = URL.Query()
-					m := &PublishMessage{
+					pusher.SendMessage(RTMP_MSG_AMF0_COMMAND, &PublishMessage{
 						CURDStreamMessage{
 							CommandMessage{
 								"publish",
@@ -114,8 +113,7 @@ func (pusher *RTMPPusher) Push() {
 						},
 						ps[len(ps)-1],
 						"live",
-					}
-					pusher.SendMessage(RTMP_MSG_AMF0_COMMAND, m)
+					})
 				} else if response, ok := msg.MsgData.(*ResponsePublishMessage); ok {
 					if response.Infomation["code"] == NetStream_Publish_Start {
 						go pusher.PlayBlock(pusher)

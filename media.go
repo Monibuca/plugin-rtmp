@@ -19,9 +19,9 @@ func (rtmp *RTMPSender) OnEvent(event any) {
 	case VideoDeConf:
 		rtmp.sendAVMessage(0, v.AVCC, false, true)
 	case *AudioFrame:
-		rtmp.sendAVMessage(v.DeltaTime, v.GetAVCC(), true, false)
+		rtmp.sendAVMessage(v.DeltaTime, v.AVCC, true, false)
 	case *VideoFrame:
-		rtmp.sendAVMessage(v.DeltaTime, v.GetAVCC(), false, false)
+		rtmp.sendAVMessage(v.DeltaTime, v.AVCC, false, false)
 	default:
 		rtmp.Subscriber.OnEvent(event)
 	}

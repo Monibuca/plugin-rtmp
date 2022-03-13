@@ -44,7 +44,7 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 		writeChunkSize:     RTMP_DEFAULT_CHUNK_SIZE,
 		readChunkSize:      RTMP_DEFAULT_CHUNK_SIZE,
 		rtmpHeader:         make(map[uint32]*ChunkHeader),
-		incompleteRtmpBody: make(map[uint32]util.Buffer),
+		incompleteRtmpBody: make(map[uint32]*util.Buffer),
 		bandwidth:          RTMP_MAX_CHUNK_SIZE << 3,
 		tmpBuf:             make([]byte, 4),
 	}
@@ -104,7 +104,7 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 					plugin.Info("createStream:", zap.Uint32("streamId", streamId))
 					nc.ResponseCreateStream(cmd.TransactionId, streamId)
 				case *CURDStreamMessage:
-					if stream, ok := senders[cmd.StreamId]; ok {
+					if stream, ok := receivers[cmd.StreamId]; ok {
 						stream.Stop()
 						delete(senders, cmd.StreamId)
 					}
