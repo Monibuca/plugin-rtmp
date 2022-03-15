@@ -121,9 +121,8 @@ func (nc *NetConnection) complex_handshake(C1 []byte) error {
 		return err
 	}
 
-	fmt.Printf("digested handshake, scheme : %v\nchallenge : %v\ndigest : %v\nok : %v\nerr : %v\n", scheme, challenge, digest, ok, err)
-
 	if !ok {
+		fmt.Printf("digested handshake, scheme : %v\nchallenge : %v\ndigest : %v\nok : %v\nerr : %v\n", scheme, challenge, digest, ok, err)
 		return errors.New("validateClient failed")
 	}
 

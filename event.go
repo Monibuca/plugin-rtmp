@@ -19,9 +19,10 @@ const (
 	NetStream_Play_StreamNotFound = "NetStream.Play.StreamNotFound" // "error"  无法找到传递给 play()方法的 FLV
 	NetStream_Play_Stop           = "NetStream.Play.Stop"           // "status" 播放已结束
 	NetStream_Play_Failed         = "NetStream.Play.Failed"         // "error"  出于此表中列出的原因之外的某一原因(例如订阅者没有读取权限),播放发生了错误
-
-	NetStream_Play_Switch   = "NetStream.Play.Switch"
-	NetStream_Play_Complete = "NetStream.Play.Complete"
+	NetStream_Play_PublishNotify  = "NetStream.Play.PublishNotify"  // "status" 发布者已经发布了流
+	NetStream_Play_UnpublishNotify = "NetStream.Play.UnpublishNotify" // "status" 发布者已经取消发布了流
+	NetStream_Play_Switch         = "NetStream.Play.Switch"
+	NetStream_Play_Complete       = "NetStream.Play.Complete"
 
 	NetStream_Data_Start = "NetStream.Data.Start"
 

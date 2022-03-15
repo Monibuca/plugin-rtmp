@@ -1,6 +1,6 @@
 # RTMP插件
 
-## 插件地址
+## 插件源码地址
 
 github.com/Monibuca/plugin-rtmp
 
@@ -14,16 +14,34 @@ import (
 ## 默认插件配置
 
 ```yaml
-rtmp
+rtmp:
   tcp:
+    # rtmp 监听端口
     listenaddr: :1935
+    # rtmp 监听端口
     listennum: 0
-  chunksize: 512
+  # 输出分块大小
+  chunksize: 4096
+  publish:
+    pubaudio: true
+    pubvideo: true
+    kickexist: false
+    publishtimeout: 10
+    waitclosetimeout: 0
+  subscribe:
+      subaudio: true
+      subvideo: true
+      iframeonly: false
+      waittimeout: 10
+  pull:
+      repull: 0
+      pullonstart: false
+      pullonsubscribe: false
+      pulllist: {}
+  push:
+      repush: 0
+      pushlist: {}
 ```
-
-- listenaddr是监听的地址
-- chunksize是输出分块大小
-
 ## 插件功能
 
 ### 接收RTMP协议的推流

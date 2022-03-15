@@ -88,6 +88,17 @@ type RTMPReceiver struct {
 	absTs map[uint32]uint32
 }
 
+func (r *RTMPReceiver) OnEvent(event any) {
+	switch event.(type) {
+	case SEwaitPublish:
+		r.Response(1, NetStream_Play_UnpublishNotify, Response_OnStatus)
+	case SEpublish:
+		r.Response(1, NetStream_Play_PublishNotify, Response_OnStatus)
+	default:
+		r.Publisher.OnEvent(event)
+	}
+}
+
 func (r *RTMPReceiver) Response(tid uint64, code, level string) error {
 	m := new(ResponsePublishMessage)
 	m.CommandName = Response_OnStatus
@@ -104,7 +115,11 @@ func (r *RTMPReceiver) Response(tid uint64, code, level string) error {
 func (r *RTMPReceiver) ReceiveAudio(msg *Chunk) {
 	// plugin.Tracef("rec_audio chunkType:%d chunkStreamID:%d ts:%d", msg.ChunkType, msg.ChunkStreamID, msg.Timestamp)
 	if msg.ChunkType == 0 {
-		r.absTs[msg.ChunkStreamID] = 0
+		if r.AudioTrack.GetName() == "" {
+			r.absTs[msg.ChunkStreamID] = 0
+		} else {
+			r.absTs[msg.ChunkStreamID] = r.AudioTrack.PreFrame().AbsTime
+		}
 	}
 	if msg.Timestamp == 0xffffff {
 		r.absTs[msg.ChunkStreamID] += msg.ExtendTimestamp
@@ -116,12 +131,17 @@ func (r *RTMPReceiver) ReceiveAudio(msg *Chunk) {
 func (r *RTMPReceiver) ReceiveVideo(msg *Chunk) {
 	// plugin.Tracef("rev_video chunkType:%d chunkStreamID:%d ts:%d", msg.ChunkType, msg.ChunkStreamID, msg.Timestamp)
 	if msg.ChunkType == 0 {
-		r.absTs[msg.ChunkStreamID] = 0
+		if r.VideoTrack.GetName() == "" {
+			r.absTs[msg.ChunkStreamID] = 0
+		} else {
+			r.absTs[msg.ChunkStreamID] = r.VideoTrack.PreFrame().AbsTime
+		}
 	}
 	if msg.Timestamp == 0xffffff {
 		r.absTs[msg.ChunkStreamID] += msg.ExtendTimestamp
 	} else {
 		r.absTs[msg.ChunkStreamID] += msg.Timestamp
 	}
+
 	r.VideoTrack.WriteAVCC(r.absTs[msg.ChunkStreamID], msg.Body)
 }
