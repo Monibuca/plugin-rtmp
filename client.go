@@ -116,7 +116,7 @@ func (pusher *RTMPPusher) Push() {
 					})
 				} else if response, ok := msg.MsgData.(*ResponsePublishMessage); ok {
 					if response.Infomation["code"] == NetStream_Publish_Start {
-						go pusher.PlayBlock(pusher)
+						go pusher.PlayBlock()
 					} else {
 						return
 					}

@@ -154,7 +154,7 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 						sender.Begin()
 						sender.Response(cmd.TransactionId, NetStream_Play_Reset, Level_Status)
 						sender.Response(cmd.TransactionId, NetStream_Play_Start, Level_Status)
-						go sender.PlayBlock(sender)
+						go sender.PlayBlock()
 					}
 				}
 			case RTMP_MSG_AUDIO:
