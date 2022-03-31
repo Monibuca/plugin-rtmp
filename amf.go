@@ -179,7 +179,7 @@ func (amf *AMF) decodeObject() (obj AMFObject, err error) {
 		return amf.readNull()
 	case AMF0_UNDEFINED:
 		_, err = amf.ReadByte()
-		return "Undefined", err
+		return nil, err
 	case AMF0_REFERENCE:
 		log.Println("reference-type.(AMF0_REFERENCE)")
 	case AMF0_ECMA_ARRAY:
