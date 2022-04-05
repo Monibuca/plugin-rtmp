@@ -14,6 +14,10 @@ type RTMPSender struct {
 
 func (rtmp *RTMPSender) OnEvent(event any) {
 	switch v := event.(type) {
+	case SEwaitPublish:
+		rtmp.Response(1, NetStream_Play_UnpublishNotify, Response_OnStatus)
+	case SEpublish:
+		rtmp.Response(1, NetStream_Play_PublishNotify, Response_OnStatus)
 	case AudioDeConf:
 		rtmp.sendAVMessage(0, v.AVCC, true, true)
 	case VideoDeConf:
@@ -86,17 +90,6 @@ type RTMPReceiver struct {
 	Publisher
 	NetStream
 	absTs map[uint32]uint32
-}
-
-func (r *RTMPReceiver) OnEvent(event any) {
-	switch event.(type) {
-	case SEwaitPublish:
-		r.Response(1, NetStream_Play_UnpublishNotify, Response_OnStatus)
-	case SEpublish:
-		r.Response(1, NetStream_Play_PublishNotify, Response_OnStatus)
-	default:
-		r.Publisher.OnEvent(event)
-	}
 }
 
 func (r *RTMPReceiver) Response(tid uint64, code, level string) error {
