@@ -75,8 +75,8 @@ func newPlayResponseMessageData(streamid uint32, code, level string) (amfobj AMF
 }
 
 type NetConnection struct {
-	*bufio.Reader
-	*net.TCPConn
+	*bufio.Reader      `json:"-"`
+	*net.TCPConn       `json:"-"`
 	bandwidth          uint32
 	readSeqNum         uint32 // 当前读的字节
 	writeSeqNum        uint32 // 当前写的字节
