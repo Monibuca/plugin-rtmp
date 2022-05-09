@@ -2,6 +2,7 @@ package rtmp
 
 import (
 	"bufio"
+	"errors"
 	"net"
 	"net/url"
 	"strings"
@@ -85,13 +86,13 @@ func (pusher *RTMPPusher) Connect() (err error) {
 	return
 }
 
-func (pusher *RTMPPusher) Push() {
+func (pusher *RTMPPusher) Push() error {
 	pusher.SendMessage(RTMP_MSG_AMF0_COMMAND, &CommandMessage{"createStream", 2})
 	defer pusher.Stop()
 	for {
 		msg, err := pusher.RecvMessage()
 		if err != nil {
-			break
+			return err
 		}
 		switch msg.MessageTypeID {
 		case RTMP_MSG_AMF0_COMMAND:
@@ -118,7 +119,7 @@ func (pusher *RTMPPusher) Push() {
 					if response.Infomation["code"] == NetStream_Publish_Start {
 						go pusher.PlayBlock()
 					} else {
-						return
+						return errors.New(response.Infomation["code"].(string))
 					}
 				}
 			}
