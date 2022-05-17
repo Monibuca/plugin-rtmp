@@ -106,6 +106,9 @@ func (r *RTMPReceiver) Response(tid uint64, code, level string) error {
 }
 
 func (r *RTMPReceiver) ReceiveAudio(msg *Chunk) {
+	if r.AudioTrack == nil {
+		return
+	}
 	// plugin.Tracef("rec_audio chunkType:%d chunkStreamID:%d ts:%d", msg.ChunkType, msg.ChunkStreamID, msg.Timestamp)
 	if msg.ChunkType == 0 {
 		if r.AudioTrack.GetName() == "" {
@@ -122,6 +125,9 @@ func (r *RTMPReceiver) ReceiveAudio(msg *Chunk) {
 	r.AudioTrack.WriteAVCC(r.absTs[msg.ChunkStreamID], msg.Body)
 }
 func (r *RTMPReceiver) ReceiveVideo(msg *Chunk) {
+	if r.VideoTrack == nil {
+		return
+	}
 	// plugin.Tracef("rev_video chunkType:%d chunkStreamID:%d ts:%d", msg.ChunkType, msg.ChunkStreamID, msg.Timestamp)
 	if msg.ChunkType == 0 {
 		if r.VideoTrack.GetName() == "" {
