@@ -130,6 +130,9 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 						},
 					}
 					receiver.SetParentCtx(ctx)
+					if !config.KeepAlive {
+						receiver.SetIO(conn)
+					}
 					if plugin.Publish(nc.appName+"/"+cmd.PublishingName, receiver) == nil {
 						receivers[cmd.StreamId] = receiver
 						receiver.absTs = make(map[uint32]uint32)
@@ -146,6 +149,9 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 						cmd.StreamId,
 					}
 					sender.SetParentCtx(ctx)
+					if !config.KeepAlive {
+						sender.SetIO(conn)
+					}
 					sender.ID = fmt.Sprintf("%s|%d", conn.RemoteAddr().String(), sender.StreamID)
 					if plugin.Subscribe(streamPath, sender) != nil {
 						sender.Response(cmd.TransactionId, NetStream_Play_Failed, Level_Error)

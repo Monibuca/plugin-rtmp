@@ -62,6 +62,7 @@ rtmp:
         repush: 0 # 当断开后是否自动重新推流，0代表不进行重新推流，-1代表无限次重新推流
         pushlist: {} # 推流列表，以 streamPath为key，远程地址为value
     chunksize: 4096
+    keepalive: false #保持rtmp连接，默认随着stream的close而主动断开
 ```
 :::tip 配置覆盖
 publish

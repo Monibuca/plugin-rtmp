@@ -15,6 +15,7 @@ type RTMPConfig struct {
 	config.Pull
 	config.Push
 	ChunkSize int
+	KeepAlive bool //保持rtmp连接，默认随着stream的close而主动断开
 }
 
 func (c *RTMPConfig) OnEvent(event any) {
@@ -59,6 +60,7 @@ func (c *RTMPConfig) OnEvent(event any) {
 		}
 	}
 }
+
 var conf = &RTMPConfig{
 	ChunkSize: 4096,
 	TCP:       config.TCP{ListenAddr: ":1935"},
