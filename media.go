@@ -1,8 +1,10 @@
 package rtmp
 
 import (
+	"errors"
 	"net"
 
+	"go.uber.org/zap"
 	. "m7s.live/engine/v4"
 	"m7s.live/engine/v4/util"
 )
@@ -35,6 +37,12 @@ func (rtmp *RTMPSender) OnEvent(event any) {
 // 当块类型为4,8的时候,Chunk Message Header有一个字段TimeStamp Delta,记录与上一个Chunk的时间差值
 // 当块类型为0的时候,Chunk Message Header没有时间字段,与上一个Chunk时间值相同
 func (sender *RTMPSender) sendAVMessage(ts uint32, payload net.Buffers, isAudio bool, isFirst bool) (err error) {
+	payloadLen := util.SizeOfBuffers(payload)
+	if payloadLen == 0 {
+		err := errors.New("payload is empty")
+		sender.Error("payload is empty", zap.Error(err))
+		return err
+	}
 	if sender.writeSeqNum > sender.bandwidth {
 		sender.totalWrite += sender.writeSeqNum
 		sender.writeSeqNum = 0
@@ -44,9 +52,9 @@ func (sender *RTMPSender) sendAVMessage(ts uint32, payload net.Buffers, isAudio 
 
 	var head *ChunkHeader
 	if isAudio {
-		head = newRtmpHeader(RTMP_CSID_AUDIO, ts, uint32(util.SizeOfBuffers(payload)), RTMP_MSG_AUDIO, sender.StreamID, 0)
+		head = newRtmpHeader(RTMP_CSID_AUDIO, ts, uint32(payloadLen), RTMP_MSG_AUDIO, sender.StreamID, 0)
 	} else {
-		head = newRtmpHeader(RTMP_CSID_VIDEO, ts, uint32(util.SizeOfBuffers(payload)), RTMP_MSG_VIDEO, sender.StreamID, 0)
+		head = newRtmpHeader(RTMP_CSID_VIDEO, ts, uint32(payloadLen), RTMP_MSG_VIDEO, sender.StreamID, 0)
 	}
 
 	// 第一次是发送关键帧,需要完整的消息头(Chunk Basic Header(1) + Chunk Message Header(11) + Extended Timestamp(4)(可能会要包括))
