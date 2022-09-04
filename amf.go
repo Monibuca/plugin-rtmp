@@ -97,14 +97,14 @@ func (amf *AMF) decodeObject() (obj AMFValue) {
 	case AMF0_OBJECT:
 		return amf.readObject()
 	case AMF0_MOVIECLIP:
-		plugin.Error("This type is not supported and is reserved for future use.(AMF0_MOVIECLIP)")
+		RTMPPlugin.Error("This type is not supported and is reserved for future use.(AMF0_MOVIECLIP)")
 	case AMF0_NULL:
 		return amf.readNull()
 	case AMF0_UNDEFINED:
 		amf.ReadByte()
 		return Undefined
 	case AMF0_REFERENCE:
-		plugin.Error("reference-type.(AMF0_REFERENCE)")
+		RTMPPlugin.Error("reference-type.(AMF0_REFERENCE)")
 	case AMF0_ECMA_ARRAY:
 		return amf.readECMAArray()
 	case AMF0_END_OBJECT:
@@ -118,15 +118,15 @@ func (amf *AMF) decodeObject() (obj AMFValue) {
 		AMF0_XML_DOCUMENT:
 		return amf.readLongString()
 	case AMF0_UNSUPPORTED:
-		plugin.Error("If a type cannot be serialized a special unsupported marker can be used in place of the type.(AMF0_UNSUPPORTED)")
+		RTMPPlugin.Error("If a type cannot be serialized a special unsupported marker can be used in place of the type.(AMF0_UNSUPPORTED)")
 	case AMF0_RECORDSET:
-		plugin.Error("This type is not supported and is reserved for future use.(AMF0_RECORDSET)")
+		RTMPPlugin.Error("This type is not supported and is reserved for future use.(AMF0_RECORDSET)")
 	case AMF0_TYPED_OBJECT:
-		plugin.Error("If a strongly typed object has an alias registered for its class then the type name will also be serialized. Typed objects are considered complex types and reoccurring instances can be sent by reference.(AMF0_TYPED_OBJECT)")
+		RTMPPlugin.Error("If a strongly typed object has an alias registered for its class then the type name will also be serialized. Typed objects are considered complex types and reoccurring instances can be sent by reference.(AMF0_TYPED_OBJECT)")
 	case AMF0_AVMPLUS_OBJECT:
-		plugin.Error("AMF0_AVMPLUS_OBJECT")
+		RTMPPlugin.Error("AMF0_AVMPLUS_OBJECT")
 	default:
-		plugin.Error("Unsupported type", zap.Uint8("type", t))
+		RTMPPlugin.Error("Unsupported type", zap.Uint8("type", t))
 	}
 	return nil
 }

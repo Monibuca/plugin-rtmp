@@ -2,6 +2,7 @@ package rtmp
 
 import (
 	"context"
+	"net/http"
 
 	"go.uber.org/zap"
 	. "m7s.live/engine/v4"
@@ -22,28 +23,28 @@ func (c *RTMPConfig) OnEvent(event any) {
 	switch v := event.(type) {
 	case FirstConfig:
 		if c.ListenAddr != "" {
-			plugin.Info("server rtmp start at", zap.String("listen addr", c.ListenAddr))
-			go c.Listen(plugin, c)
+			RTMPPlugin.Info("server rtmp start at", zap.String("listen addr", c.ListenAddr))
+			go c.Listen(RTMPPlugin, c)
 		}
 		if c.PullOnStart {
 			for streamPath, url := range c.PullList {
-				if err := plugin.Pull(streamPath, url, new(RTMPPuller), false); err != nil {
-					plugin.Error("pull", zap.String("streamPath", streamPath), zap.String("url", url), zap.Error(err))
+				if err := RTMPPlugin.Pull(streamPath, url, new(RTMPPuller), false); err != nil {
+					RTMPPlugin.Error("pull", zap.String("streamPath", streamPath), zap.String("url", url), zap.Error(err))
 				}
 			}
 		}
 	case config.Config:
-		plugin.CancelFunc()
+		RTMPPlugin.CancelFunc()
 		if c.ListenAddr != "" {
-			plugin.Context, plugin.CancelFunc = context.WithCancel(Engine)
-			plugin.Info("server rtmp start at", zap.String("listen addr", c.ListenAddr))
-			go c.Listen(plugin, c)
+			RTMPPlugin.Context, RTMPPlugin.CancelFunc = context.WithCancel(Engine)
+			RTMPPlugin.Info("server rtmp start at", zap.String("listen addr", c.ListenAddr))
+			go c.Listen(RTMPPlugin, c)
 		}
 	case SEpublish:
 		for streamPath, url := range c.PushList {
 			if streamPath == v.Stream.Path {
-				if err := plugin.Push(streamPath, url, new(RTMPPusher), false); err != nil {
-					plugin.Error("push", zap.String("streamPath", streamPath), zap.String("url", url), zap.Error(err))
+				if err := RTMPPlugin.Push(streamPath, url, new(RTMPPusher), false); err != nil {
+					RTMPPlugin.Error("push", zap.String("streamPath", streamPath), zap.String("url", url), zap.Error(err))
 				}
 			}
 		}
@@ -51,8 +52,8 @@ func (c *RTMPConfig) OnEvent(event any) {
 		if c.PullOnSubscribe {
 			for streamPath, url := range c.PullList {
 				if streamPath == v.Path {
-					if err := plugin.Pull(streamPath, url, new(RTMPPuller), false); err != nil {
-						plugin.Error("pull", zap.String("streamPath", streamPath), zap.String("url", url), zap.Error(err))
+					if err := RTMPPlugin.Pull(streamPath, url, new(RTMPPuller), false); err != nil {
+						RTMPPlugin.Error("pull", zap.String("streamPath", streamPath), zap.String("url", url), zap.Error(err))
 					}
 					break
 				}
@@ -65,4 +66,22 @@ var conf = &RTMPConfig{
 	ChunkSize: 4096,
 	TCP:       config.TCP{ListenAddr: ":1935"},
 }
-var plugin = InstallPlugin(conf)
+var RTMPPlugin = InstallPlugin(conf)
+
+func (*RTMPConfig) API_Pull(rw http.ResponseWriter, r *http.Request) {
+	err := RTMPPlugin.Pull(r.URL.Query().Get("streamPath"), r.URL.Query().Get("target"), new(RTMPPuller), r.URL.Query().Has("save"))
+	if err != nil {
+		http.Error(rw, err.Error(), http.StatusBadRequest)
+	} else {
+		rw.Write([]byte("ok"))
+	}
+}
+
+func (*RTMPConfig) API_Push(rw http.ResponseWriter, r *http.Request) {
+	err := RTMPPlugin.Push(r.URL.Query().Get("streamPath"), r.URL.Query().Get("target"), new(RTMPPusher), r.URL.Query().Has("save"))
+	if err != nil {
+		http.Error(rw, err.Error(), http.StatusBadRequest)
+	} else {
+		rw.Write([]byte("ok"))
+	}
+}

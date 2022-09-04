@@ -52,7 +52,7 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 	defer cancel()
 	/* Handshake */
 	if err := nc.Handshake(); err != nil {
-		plugin.Error("handshake", zap.Error(err))
+		RTMPPlugin.Error("handshake", zap.Error(err))
 		return
 	}
 	for {
@@ -66,7 +66,7 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 					break
 				}
 				cmd := msg.MsgData.(Commander).GetCommand()
-				plugin.Debug("recv cmd", zap.String("commandName", cmd.CommandName), zap.Uint32("streamID", msg.MessageStreamID))
+				RTMPPlugin.Debug("recv cmd", zap.String("commandName", cmd.CommandName), zap.Uint32("streamID", msg.MessageStreamID))
 				switch cmd := msg.MsgData.(type) {
 				case *CallMessage: //connect
 					app := cmd.Object["app"]                       // 客户端要连接到的服务应用名
@@ -75,7 +75,7 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 						nc.objectEncoding = objectEncoding.(float64)
 					}
 					nc.appName = app.(string)
-					plugin.Info("connect", zap.String("appName", nc.appName), zap.Float64("objectEncoding", nc.objectEncoding))
+					RTMPPlugin.Info("connect", zap.String("appName", nc.appName), zap.Float64("objectEncoding", nc.objectEncoding))
 					err = nc.SendMessage(RTMP_MSG_ACK_SIZE, Uint32Message(512<<10))
 					nc.writeChunkSize = config.ChunkSize
 					err = nc.SendMessage(RTMP_MSG_CHUNK_SIZE, Uint32Message(config.ChunkSize))
@@ -101,7 +101,7 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 					err = nc.SendMessage(RTMP_MSG_AMF0_COMMAND, m)
 				case *CommandMessage: // "createStream"
 					streamId := atomic.AddUint32(&gstreamid, 1)
-					plugin.Info("createStream:", zap.Uint32("streamId", streamId))
+					RTMPPlugin.Info("createStream:", zap.Uint32("streamId", streamId))
 					nc.ResponseCreateStream(cmd.TransactionId, streamId)
 				case *CURDStreamMessage:
 					if stream, ok := receivers[cmd.StreamId]; ok {
@@ -133,7 +133,7 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 					if !config.KeepAlive {
 						receiver.SetIO(conn)
 					}
-					if plugin.Publish(nc.appName+"/"+cmd.PublishingName, receiver) == nil {
+					if RTMPPlugin.Publish(nc.appName+"/"+cmd.PublishingName, receiver) == nil {
 						receivers[cmd.StreamId] = receiver
 						receiver.absTs = make(map[uint32]uint32)
 						receiver.Begin()
@@ -153,7 +153,7 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 						sender.SetIO(conn)
 					}
 					sender.ID = fmt.Sprintf("%s|%d", conn.RemoteAddr().String(), sender.StreamID)
-					if plugin.Subscribe(streamPath, sender) != nil {
+					if RTMPPlugin.Subscribe(streamPath, sender) != nil {
 						sender.Response(cmd.TransactionId, NetStream_Play_Failed, Level_Error)
 					} else {
 						senders[sender.StreamID] = sender

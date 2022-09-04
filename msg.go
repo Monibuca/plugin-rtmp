@@ -310,11 +310,11 @@ func decodeCommandAMF0(chunk *Chunk) {
 		codef := zap.String("code", response.Infomation["code"].(string))
 		switch response.Infomation["level"] {
 		case Level_Status:
-			plugin.Info("_result :", codef)
+			RTMPPlugin.Info("_result :", codef)
 		case Level_Warning:
-			plugin.Warn("_result :", codef)
+			RTMPPlugin.Warn("_result :", codef)
 		case Level_Error:
-			plugin.Error("_result :", codef)
+			RTMPPlugin.Error("_result :", codef)
 		}
 		if strings.HasPrefix(response.Infomation["code"].(string), "NetStream.Publish") {
 			chunk.MsgData = &ResponsePublishMessage{
@@ -335,7 +335,7 @@ func decodeCommandAMF0(chunk *Chunk) {
 		}
 	case "FCPublish", "FCUnpublish":
 	default:
-		plugin.Info("decode command amf0 ", zap.String("cmd", cmd))
+		RTMPPlugin.Info("decode command amf0 ", zap.String("cmd", cmd))
 	}
 }
 

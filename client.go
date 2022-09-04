@@ -15,7 +15,7 @@ import (
 func NewRTMPClient(addr string) (client *NetConnection, err error) {
 	u, err := url.Parse(addr)
 	if err != nil {
-		plugin.Error("connect url parse", zap.Error(err))
+		RTMPPlugin.Error("connect url parse", zap.Error(err))
 		return nil, err
 	}
 	if strings.Count(u.Host, ":") == 0 {
@@ -23,7 +23,7 @@ func NewRTMPClient(addr string) (client *NetConnection, err error) {
 	}
 	conn, err := net.Dial("tcp", u.Host)
 	if err != nil {
-		plugin.Error("dial tcp", zap.String("host", u.Host), zap.Error(err))
+		RTMPPlugin.Error("dial tcp", zap.String("host", u.Host), zap.Error(err))
 		return nil, err
 	}
 	client = &NetConnection{
@@ -38,7 +38,7 @@ func NewRTMPClient(addr string) (client *NetConnection, err error) {
 	}
 	err = client.ClientHandshake()
 	if err != nil {
-		plugin.Error("handshake", zap.Error(err))
+		RTMPPlugin.Error("handshake", zap.Error(err))
 		return nil, err
 	}
 	ps := strings.Split(u.Path, "/")
@@ -82,7 +82,7 @@ type RTMPPusher struct {
 
 func (pusher *RTMPPusher) Connect() (err error) {
 	pusher.NetConnection, err = NewRTMPClient(pusher.RemoteURL)
-	plugin.Info("connect", zap.String("remoteURL", pusher.RemoteURL))
+	RTMPPlugin.Info("connect", zap.String("remoteURL", pusher.RemoteURL))
 	return
 }
 
@@ -134,7 +134,7 @@ type RTMPPuller struct {
 
 func (puller *RTMPPuller) Connect() (err error) {
 	puller.NetConnection, err = NewRTMPClient(puller.RemoteURL)
-	plugin.Info("connect", zap.String("remoteURL", puller.RemoteURL))
+	RTMPPlugin.Info("connect", zap.String("remoteURL", puller.RemoteURL))
 	return
 }
 
