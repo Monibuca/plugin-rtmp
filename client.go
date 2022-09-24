@@ -50,7 +50,7 @@ func NewRTMPClient(addr string) (client *NetConnection, err error) {
 			"app":      client.appName,
 			"flashVer": "monibuca/" + engine.Engine.Version,
 			"swfUrl":   addr,
-			"tcUrl":    addr,
+			"tcUrl":    strings.TrimSuffix(addr, u.Path) + "/" + client.appName,
 		},
 		nil,
 	})

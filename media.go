@@ -119,18 +119,18 @@ func (r *RTMPReceiver) ReceiveAudio(msg *Chunk) {
 		r.WriteAVCCAudio(0, msg.Body)
 		return
 	}
-	// plugin.Tracef("rec_audio chunkType:%d chunkStreamID:%d ts:%d", msg.ChunkType, msg.ChunkStreamID, msg.Timestamp)
+	ts := msg.Timestamp
+	if ts == 0xffffff {
+		ts = msg.ExtendTimestamp
+	}
 	if msg.ChunkType == 0 {
 		if r.AudioTrack.GetBase().Name == "" {
 			r.absTs[msg.ChunkStreamID] = 0
 		} else {
-			r.absTs[msg.ChunkStreamID] = r.AudioTrack.PreFrame().AbsTime
+			r.absTs[msg.ChunkStreamID] = ts
 		}
-	}
-	if msg.Timestamp == 0xffffff {
-		r.absTs[msg.ChunkStreamID] += msg.ExtendTimestamp
 	} else {
-		r.absTs[msg.ChunkStreamID] += msg.Timestamp
+		r.absTs[msg.ChunkStreamID] += ts
 	}
 	r.AudioTrack.WriteAVCC(r.absTs[msg.ChunkStreamID], msg.Body)
 }
@@ -140,19 +140,18 @@ func (r *RTMPReceiver) ReceiveVideo(msg *Chunk) {
 		r.WriteAVCCVideo(0, msg.Body)
 		return
 	}
-	// plugin.Tracef("rev_video chunkType:%d chunkStreamID:%d ts:%d", msg.ChunkType, msg.ChunkStreamID, msg.Timestamp)
+	ts := msg.Timestamp
+	if ts == 0xffffff {
+		ts = msg.ExtendTimestamp
+	}
 	if msg.ChunkType == 0 {
 		if r.VideoTrack.GetBase().Name == "" {
 			r.absTs[msg.ChunkStreamID] = 0
 		} else {
-			r.absTs[msg.ChunkStreamID] = r.VideoTrack.PreFrame().AbsTime
+			r.absTs[msg.ChunkStreamID] = ts
 		}
-	}
-	if msg.Timestamp == 0xffffff {
-		r.absTs[msg.ChunkStreamID] += msg.ExtendTimestamp
 	} else {
-		r.absTs[msg.ChunkStreamID] += msg.Timestamp
+		r.absTs[msg.ChunkStreamID] += ts
 	}
-
 	r.VideoTrack.WriteAVCC(r.absTs[msg.ChunkStreamID], msg.Body)
 }

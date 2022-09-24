@@ -334,7 +334,9 @@ func decodeCommandAMF0(chunk *Chunk) {
 			chunk.MsgData = response
 		}
 	case "FCPublish", "FCUnpublish":
+		fallthrough
 	default:
+		chunk.MsgData = &struct{ CommandMessage }{cmdMsg}
 		RTMPPlugin.Info("decode command amf0 ", zap.String("cmd", cmd))
 	}
 }
@@ -505,16 +507,16 @@ func (msg *PlayMessage) Encode() []byte {
 	amf.writeNumber(float64(msg.TransactionId))
 	amf.writeNull()
 	amf.writeString(msg.StreamName)
+	amf.writeNumber(-2000)
+	// if msg.Start > 0 {
+	// 	amf.writeNumber(msg.Start)
+	// }
 
-	if msg.Start > 0 {
-		amf.writeNumber(msg.Start)
-	}
+	// if msg.Duration > 0 {
+	// 	amf.writeNumber(msg.Duration)
+	// }
 
-	if msg.Duration > 0 {
-		amf.writeNumber(msg.Duration)
-	}
-
-	amf.writeBool(msg.Reset)
+	// amf.writeBool(msg.Reset)
 	return amf.Buffer
 }
 

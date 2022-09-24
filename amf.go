@@ -160,8 +160,8 @@ func (amf *AMF) readDate() uint64 {
 
 func (amf *AMF) readStrictArray() (list []AMFValue) {
 	amf.ReadByte()
-	size := amf.ReadUint16()
-	for i := uint16(0); i < size; i++ {
+	size := amf.ReadUint32()
+	for i := uint32(0); i < size; i++ {
 		list = append(list, amf.decodeObject())
 	}
 	return
@@ -170,8 +170,8 @@ func (amf *AMF) readStrictArray() (list []AMFValue) {
 func (amf *AMF) readECMAArray() (m AMFObject) {
 	m = make(AMFObject, 0)
 	amf.ReadByte()
-	size := amf.ReadUint16()
-	for i := uint16(0); i < size; i++ {
+	size := amf.ReadUint32()
+	for i := uint32(0); i < size; i++ {
 		k := amf.readString1()
 		v := amf.decodeObject()
 		if k == "" && v == ObjectEnd {
