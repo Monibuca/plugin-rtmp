@@ -9,6 +9,9 @@ import (
 	"io"
 	"math/rand"
 	"net"
+	"time"
+
+	"m7s.live/engine/v4/util"
 )
 
 const (
@@ -70,20 +73,18 @@ func ReadBuf(r io.Reader, length int) (buf []byte) {
 }
 
 func (nc *NetConnection) Handshake() error {
-	C0C1 := ReadBuf(nc.Reader, 1536+1)
+	C0C1 := ReadBuf(nc.Reader, C1S1_SIZE+1)
 	if C0C1[0] != RTMP_HANDSHAKE_VERSION {
 		return errors.New("C0 Error")
 	}
-
-	if len(C0C1[1:]) != 1536 {
+	var C1 = C0C1[1:]
+	if len(C1) != C1S1_SIZE {
 		return errors.New("C1 Error")
 	}
+	var ts int
+	util.GetBE(C1[4:8], &ts)
 
-	C1 := make([]byte, 1536)
-	copy(C1, C0C1[1:])
-	temp := C1[4] & 0xff
-
-	if temp == 0 {
+	if ts == 0 {
 		return nc.simple_handshake(C1)
 	}
 
@@ -91,10 +92,10 @@ func (nc *NetConnection) Handshake() error {
 }
 
 func (client *NetConnection) ClientHandshake() error {
-	C0C1 := make([]byte, 1536+1)
+	C0C1 := make([]byte, C1S1_SIZE+1)
 	C0C1[0] = RTMP_HANDSHAKE_VERSION
 	client.Write(C0C1)
-	S1C1 := ReadBuf(client.Reader, 1536+1536+1)
+	S1C1 := ReadBuf(client.Reader, C1S1_SIZE+C1S1_SIZE+1)
 	if S1C1[0] != RTMP_HANDSHAKE_VERSION {
 		return errors.New("S1 C1 Error")
 	}
@@ -104,12 +105,15 @@ func (client *NetConnection) ClientHandshake() error {
 }
 
 func (nc *NetConnection) simple_handshake(C1 []byte) error {
-	S1 := make([]byte, 1536+1)
-	S1[0] = RTMP_HANDSHAKE_VERSION
-	buffer := net.Buffers{S1, C1}
-	buffer.WriteTo(nc)
-	if C2 := ReadBuf(nc.Reader, 1536); bytes.Compare(C2, S1[1:]) != 0 {
+	S0S1 := make([]byte, C1S1_SIZE+1)
+	S0S1[0] = RTMP_HANDSHAKE_VERSION
+	util.PutBE(S0S1[1:5], time.Now().Unix()&0xFFFFFFFF)
+	copy(S0S1[5:], "Monibuca")
+	nc.Write(S0S1)
+	if C2 := ReadBuf(nc.Reader, C1S1_SIZE); bytes.Compare(C2[8:], S0S1[9:]) != 0 {
 		return errors.New("C2 Error")
+	} else {
+		nc.Write(C2) //S2
 	}
 	return nil
 }
