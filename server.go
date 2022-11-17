@@ -166,10 +166,14 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 			case RTMP_MSG_AUDIO:
 				if r, ok := receivers[msg.MessageStreamID]; ok {
 					r.ReceiveAudio(msg)
+				} else {
+					RTMPPlugin.Warn("ReceiveAudio", zap.Uint32("MessageStreamID", msg.MessageStreamID))
 				}
 			case RTMP_MSG_VIDEO:
 				if r, ok := receivers[msg.MessageStreamID]; ok {
 					r.ReceiveVideo(msg)
+				} else {
+					RTMPPlugin.Warn("ReceiveVideo", zap.Uint32("MessageStreamID", msg.MessageStreamID))
 				}
 			}
 		} else {

@@ -102,7 +102,8 @@ func (pusher *RTMPPusher) Push() error {
 				if response, ok := msg.MsgData.(*ResponseCreateStreamMessage); ok {
 					pusher.StreamID = response.StreamId
 					URL, _ := url.Parse(pusher.RemoteURL)
-					ps := strings.Split(URL.Path, "/")
+					_, streamPath, _ := strings.Cut(URL.Path, "/")
+					_, streamPath, _ = strings.Cut(streamPath, "/")
 					pusher.Args = URL.Query()
 					pusher.SendMessage(RTMP_MSG_AMF0_COMMAND, &PublishMessage{
 						CURDStreamMessage{
@@ -112,7 +113,7 @@ func (pusher *RTMPPusher) Push() error {
 							},
 							response.StreamId,
 						},
-						ps[len(ps)-1],
+						streamPath,
 						"live",
 					})
 				} else if response, ok := msg.MsgData.(*ResponsePublishMessage); ok {
