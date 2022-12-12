@@ -3,10 +3,12 @@ package rtmp
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"go.uber.org/zap"
 	. "m7s.live/engine/v4"
 	"m7s.live/engine/v4/config"
+	"m7s.live/engine/v4/util"
 )
 
 type RTMPConfig struct {
@@ -67,6 +69,22 @@ var conf = &RTMPConfig{
 	TCP:       config.TCP{ListenAddr: ":1935"},
 }
 var RTMPPlugin = InstallPlugin(conf)
+
+func filterStreams() (ss []*Stream) {
+	Streams.RLock()
+	defer Streams.RUnlock()
+	for _, s := range Streams.Map {
+		switch s.Publisher.(type) {
+		case *RTMPReceiver, *RTMPPuller:
+			ss = append(ss, s)
+		}
+	}
+	return
+}
+
+func (*RTMPConfig) API_list(w http.ResponseWriter, r *http.Request) {
+	util.ReturnJson(filterStreams, time.Second, w, r)
+}
 
 func (*RTMPConfig) API_Pull(rw http.ResponseWriter, r *http.Request) {
 	err := RTMPPlugin.Pull(r.URL.Query().Get("streamPath"), r.URL.Query().Get("target"), new(RTMPPuller), r.URL.Query().Has("save"))
