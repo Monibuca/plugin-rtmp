@@ -139,7 +139,7 @@ func (puller *RTMPPuller) Connect() (err error) {
 	return
 }
 
-func (puller *RTMPPuller) Pull() {
+func (puller *RTMPPuller) Pull() (err error) {
 	puller.absTs = make(map[uint32]uint32)
 	puller.SendMessage(RTMP_MSG_AMF0_COMMAND, &CommandMessage{"createStream", 2})
 	for {
@@ -180,4 +180,5 @@ func (puller *RTMPPuller) Pull() {
 			}
 		}
 	}
+	return
 }
