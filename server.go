@@ -39,7 +39,7 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 	senders := make(map[uint32]*RTMPSubscriber)
 	receivers := make(map[uint32]*RTMPReceiver)
 	nc := &NetConnection{
-		TCPConn:            conn,
+		Conn:               conn,
 		Reader:             bufio.NewReader(conn),
 		writeChunkSize:     RTMP_DEFAULT_CHUNK_SIZE,
 		readChunkSize:      RTMP_DEFAULT_CHUNK_SIZE,
@@ -71,8 +71,11 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 				case *CallMessage: //connect
 					app := cmd.Object["app"]                       // 客户端要连接到的服务应用名
 					objectEncoding := cmd.Object["objectEncoding"] // AMF编码方法
-					if objectEncoding != nil {
-						nc.objectEncoding = objectEncoding.(float64)
+					switch v := objectEncoding.(type) {
+					case float64:
+						nc.objectEncoding = v
+					default:
+						nc.objectEncoding = 0
 					}
 					nc.appName = app.(string)
 					RTMPPlugin.Info("connect", zap.String("appName", nc.appName), zap.Float64("objectEncoding", nc.objectEncoding))
