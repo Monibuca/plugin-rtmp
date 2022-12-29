@@ -2,6 +2,7 @@ package rtmp
 
 import (
 	"bufio"
+	"crypto/tls"
 	"errors"
 	"net"
 	"net/url"
@@ -18,16 +19,28 @@ func NewRTMPClient(addr string) (client *NetConnection, err error) {
 		RTMPPlugin.Error("connect url parse", zap.Error(err))
 		return nil, err
 	}
+	isRtmps := u.Scheme == "rtmps"
 	if strings.Count(u.Host, ":") == 0 {
-		u.Host += ":1935"
+		if isRtmps {
+			u.Host += ":443"
+		} else {
+			u.Host += ":1935"
+		}
 	}
-	conn, err := net.Dial("tcp", u.Host)
+	var conn net.Conn
+	if isRtmps {
+		var tlsconn *tls.Conn
+		tlsconn, err = tls.Dial("tcp", u.Host, &tls.Config{})
+		conn = tlsconn
+	} else {
+		conn, err = net.Dial("tcp", u.Host)
+	}
 	if err != nil {
 		RTMPPlugin.Error("dial tcp", zap.String("host", u.Host), zap.Error(err))
 		return nil, err
 	}
 	client = &NetConnection{
-		TCPConn:            conn.(*net.TCPConn),
+		Conn:               conn,
 		Reader:             bufio.NewReader(conn),
 		writeChunkSize:     conf.ChunkSize,
 		readChunkSize:      RTMP_DEFAULT_CHUNK_SIZE,
