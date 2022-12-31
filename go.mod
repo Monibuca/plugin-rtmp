@@ -4,7 +4,7 @@ go 1.18
 
 require (
 	go.uber.org/zap v1.21.0
-	m7s.live/engine/v4 v4.9.3
+	m7s.live/engine/v4 v4.9.5
 )
 
 require (

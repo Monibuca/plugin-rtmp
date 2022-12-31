@@ -91,17 +91,21 @@ func (nc *NetConnection) Handshake() error {
 	return nc.complex_handshake(C1)
 }
 
-func (client *NetConnection) ClientHandshake() error {
+func (client *NetConnection) ClientHandshake() (err error) {
 	C0C1 := make([]byte, C1S1_SIZE+1)
 	C0C1[0] = RTMP_HANDSHAKE_VERSION
-	client.Write(C0C1)
-	S1C1 := ReadBuf(client.Reader, C1S1_SIZE+C1S1_SIZE+1)
-	if S1C1[0] != RTMP_HANDSHAKE_VERSION {
-		return errors.New("S1 C1 Error")
+	if _, err = client.Write(C0C1); err == nil {
+		// read S0 S1
+		if _, err = io.ReadFull(client.Reader, C0C1); err == nil {
+			if C0C1[0] != RTMP_HANDSHAKE_VERSION {
+				err = errors.New("S1 C1 Error")
+				// C2
+			} else if _, err = client.Write(C0C1[1:]); err == nil {
+				_, err = io.ReadFull(client.Reader, C0C1[1:]) // S2
+			}
+		}
 	}
-	C2 := S1C1[1 : 1536+1]
-	client.Write(C2)
-	return nil
+	return
 }
 
 func (nc *NetConnection) simple_handshake(C1 []byte) error {

@@ -45,6 +45,7 @@ rtmp:
         kickexist: false
         publishtimeout: 10
         waitclosetimeout: 0
+        delayclosetimeout: 0
     subscribe:
         subaudio: true
         subvideo: true
@@ -55,9 +56,8 @@ rtmp:
         listennum: 0
     pull:
         repull: 0 # 当断开后是否自动重新拉流，0代表不进行重新拉流，-1代表无限次重新拉流
-        pullonstart: false # 是否在m7s启动的时候自动拉流
-        pullonsubscribe: false  # 是否在有人订阅的时候自动拉流（按需拉流）
-        pulllist: {} # 拉流列表，以 streamPath为key，远程地址为value
+        pullonstart: {} # 是否在m7s启动的时候自动拉流
+        pullonsub: {}  # 是否在有人订阅的时候自动拉流（按需拉流）
     push:
         repush: 0 # 当断开后是否自动重新推流，0代表不进行重新推流，-1代表无限次重新推流
         pushlist: {} # 推流列表，以 streamPath为key，远程地址为value
@@ -71,4 +71,11 @@ subscribe
 :::
 
 ## API
-无
+### `rtmp/api/list`
+获取所有rtmp流
+
+### `rtmp/api/pull?target=[RTMP地址]&streamPath=[流标识]`
+从远程拉取rtmp到m7s中
+
+### `rtmp/api/push?target=[RTMP地址]&streamPath=[流标识]`
+将本地的流推送到远端

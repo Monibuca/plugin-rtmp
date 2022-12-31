@@ -3,6 +3,7 @@ package rtmp
 import (
 	"context"
 	"net/http"
+	"strconv"
 	"time"
 
 	"go.uber.org/zap"
@@ -28,11 +29,9 @@ func (c *RTMPConfig) OnEvent(event any) {
 			RTMPPlugin.Info("server rtmp start at", zap.String("listen addr", c.ListenAddr))
 			go c.Listen(RTMPPlugin, c)
 		}
-		if c.PullOnStart {
-			for streamPath, url := range c.PullList {
-				if err := RTMPPlugin.Pull(streamPath, url, new(RTMPPuller), false); err != nil {
-					RTMPPlugin.Error("pull", zap.String("streamPath", streamPath), zap.String("url", url), zap.Error(err))
-				}
+		for streamPath, url := range c.PullOnStart {
+			if err := RTMPPlugin.Pull(streamPath, url, new(RTMPPuller), 0); err != nil {
+				RTMPPlugin.Error("pull", zap.String("streamPath", streamPath), zap.String("url", url), zap.Error(err))
 			}
 		}
 	case config.Config:
@@ -51,14 +50,12 @@ func (c *RTMPConfig) OnEvent(event any) {
 			}
 		}
 	case *Stream: //按需拉流
-		if c.PullOnSubscribe {
-			for streamPath, url := range c.PullList {
-				if streamPath == v.Path {
-					if err := RTMPPlugin.Pull(streamPath, url, new(RTMPPuller), false); err != nil {
-						RTMPPlugin.Error("pull", zap.String("streamPath", streamPath), zap.String("url", url), zap.Error(err))
-					}
-					break
+		for streamPath, url := range c.PullOnSub {
+			if streamPath == v.Path {
+				if err := RTMPPlugin.Pull(streamPath, url, new(RTMPPuller), 0); err != nil {
+					RTMPPlugin.Error("pull", zap.String("streamPath", streamPath), zap.String("url", url), zap.Error(err))
 				}
+				break
 			}
 		}
 	}
@@ -87,7 +84,8 @@ func (*RTMPConfig) API_list(w http.ResponseWriter, r *http.Request) {
 }
 
 func (*RTMPConfig) API_Pull(rw http.ResponseWriter, r *http.Request) {
-	err := RTMPPlugin.Pull(r.URL.Query().Get("streamPath"), r.URL.Query().Get("target"), new(RTMPPuller), r.URL.Query().Has("save"))
+	save, _ := strconv.Atoi(r.URL.Query().Get("save"))
+	err := RTMPPlugin.Pull(r.URL.Query().Get("streamPath"), r.URL.Query().Get("target"), new(RTMPPuller), save)
 	if err != nil {
 		http.Error(rw, err.Error(), http.StatusBadRequest)
 	} else {
