@@ -90,13 +90,13 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 					m := new(ResponseConnectMessage)
 					m.CommandName = Response_Result
 					m.TransactionId = 1
-					m.Properties = AMFObject{
+					m.Properties = map[string]any{
 						"fmsVer":       "monibuca/" + engine.Engine.Version,
 						"capabilities": 31,
 						"mode":         1,
 						"Author":       "dexter",
 					}
-					m.Infomation = AMFObject{
+					m.Infomation = map[string]any{
 						"level":          Level_Status,
 						"code":           NetConnection_Connect_Success,
 						"objectEncoding": nc.objectEncoding,

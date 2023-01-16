@@ -19,6 +19,11 @@ func NewRTMPClient(addr string) (client *NetConnection, err error) {
 		RTMPPlugin.Error("connect url parse", zap.Error(err))
 		return nil, err
 	}
+	ps := strings.Split(u.Path, "/")
+	if len(ps) < 3 {
+		RTMPPlugin.Error("illegal rtmp url", zap.String("url", addr))
+		return nil, errors.New("illegal rtmp url")
+	}
 	isRtmps := u.Scheme == "rtmps"
 	if strings.Count(u.Host, ":") == 0 {
 		if isRtmps {
@@ -54,12 +59,11 @@ func NewRTMPClient(addr string) (client *NetConnection, err error) {
 		RTMPPlugin.Error("handshake", zap.Error(err))
 		return nil, err
 	}
-	ps := strings.Split(u.Path, "/")
 	client.appName = ps[1]
 	err = client.SendMessage(RTMP_MSG_CHUNK_SIZE, Uint32Message(conf.ChunkSize))
 	client.SendMessage(RTMP_MSG_AMF0_COMMAND, &CallMessage{
 		CommandMessage{"connect", 1},
-		AMFObject{
+		map[string]any{
 			"app":      client.appName,
 			"flashVer": "monibuca/" + engine.Engine.Version,
 			"swfUrl":   addr,

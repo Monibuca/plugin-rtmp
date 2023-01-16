@@ -43,8 +43,8 @@ const (
 	SEND_FULL_VDIEO_MESSAGE = "Send Full Video Message"
 )
 
-func newConnectResponseMessageData(objectEncoding float64) (amfobj AMFObject) {
-	amfobj = make(AMFObject)
+func newConnectResponseMessageData(objectEncoding float64) (amfobj map[string]any) {
+	amfobj = make(map[string]any)
 	amfobj["fmsVer"] = "monibuca/" + Engine.Version
 	amfobj["capabilities"] = 31
 	amfobj["mode"] = 1
@@ -56,8 +56,8 @@ func newConnectResponseMessageData(objectEncoding float64) (amfobj AMFObject) {
 	return
 }
 
-func newPublishResponseMessageData(streamid uint32, code, level string) (amfobj AMFObject) {
-	amfobj = make(AMFObject)
+func newPublishResponseMessageData(streamid uint32, code, level string) (amfobj map[string]any) {
+	amfobj = make(map[string]any)
 	amfobj["code"] = code
 	amfobj["level"] = level
 	amfobj["streamid"] = streamid
@@ -65,8 +65,8 @@ func newPublishResponseMessageData(streamid uint32, code, level string) (amfobj 
 	return
 }
 
-func newPlayResponseMessageData(streamid uint32, code, level string) (amfobj AMFObject) {
-	amfobj = make(AMFObject)
+func newPlayResponseMessageData(streamid uint32, code, level string) (amfobj map[string]any) {
+	amfobj = make(map[string]any)
 	amfobj["code"] = code
 	amfobj["level"] = level
 	amfobj["streamid"] = streamid

@@ -85,7 +85,7 @@ func (r *RTMPSender) Response(tid uint64, code, level string) error {
 	m := new(ResponsePlayMessage)
 	m.CommandName = Response_OnStatus
 	m.TransactionId = tid
-	m.Object = AMFObject{
+	m.Object = map[string]any{
 		"code":        code,
 		"level":       level,
 		"description": "",
@@ -104,7 +104,7 @@ func (r *RTMPReceiver) Response(tid uint64, code, level string) error {
 	m := new(ResponsePublishMessage)
 	m.CommandName = Response_OnStatus
 	m.TransactionId = tid
-	m.Infomation = AMFObject{
+	m.Infomation = map[string]any{
 		"code":        code,
 		"level":       level,
 		"description": "",
