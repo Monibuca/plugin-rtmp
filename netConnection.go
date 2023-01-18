@@ -7,7 +7,6 @@ import (
 	"io"
 	"net"
 
-	. "m7s.live/engine/v4"
 	"m7s.live/engine/v4/util"
 )
 
@@ -42,37 +41,6 @@ const (
 	SEND_VIDEO_MESSAGE      = "Send Video Message"
 	SEND_FULL_VDIEO_MESSAGE = "Send Full Video Message"
 )
-
-func newConnectResponseMessageData(objectEncoding float64) (amfobj map[string]any) {
-	amfobj = make(map[string]any)
-	amfobj["fmsVer"] = "monibuca/" + Engine.Version
-	amfobj["capabilities"] = 31
-	amfobj["mode"] = 1
-	amfobj["Author"] = "dexter"
-	amfobj["level"] = Level_Status
-	amfobj["code"] = NetConnection_Connect_Success
-	amfobj["objectEncoding"] = uint64(objectEncoding)
-
-	return
-}
-
-func newPublishResponseMessageData(streamid uint32, code, level string) (amfobj map[string]any) {
-	amfobj = make(map[string]any)
-	amfobj["code"] = code
-	amfobj["level"] = level
-	amfobj["streamid"] = streamid
-
-	return
-}
-
-func newPlayResponseMessageData(streamid uint32, code, level string) (amfobj map[string]any) {
-	amfobj = make(map[string]any)
-	amfobj["code"] = code
-	amfobj["level"] = level
-	amfobj["streamid"] = streamid
-
-	return
-}
 
 type NetConnection struct {
 	*bufio.Reader      `json:"-"`

@@ -44,6 +44,11 @@ func NewRTMPClient(addr string) (client *NetConnection, err error) {
 		RTMPPlugin.Error("dial tcp", zap.String("host", u.Host), zap.Error(err))
 		return nil, err
 	}
+	defer func() {
+		if err != nil || client == nil {
+			conn.Close()
+		}
+	}()
 	client = &NetConnection{
 		Conn:               conn,
 		Reader:             bufio.NewReader(conn),
@@ -61,7 +66,10 @@ func NewRTMPClient(addr string) (client *NetConnection, err error) {
 	}
 	client.appName = ps[1]
 	err = client.SendMessage(RTMP_MSG_CHUNK_SIZE, Uint32Message(conf.ChunkSize))
-	client.SendMessage(RTMP_MSG_AMF0_COMMAND, &CallMessage{
+	if err != nil {
+		return
+	}
+	err = client.SendMessage(RTMP_MSG_AMF0_COMMAND, &CallMessage{
 		CommandMessage{"connect", 1},
 		map[string]any{
 			"app":      client.appName,
@@ -71,6 +79,9 @@ func NewRTMPClient(addr string) (client *NetConnection, err error) {
 		},
 		nil,
 	})
+	if err != nil {
+		return
+	}
 	for {
 		msg, err := client.RecvMessage()
 		if err != nil {
@@ -98,8 +109,10 @@ type RTMPPusher struct {
 }
 
 func (pusher *RTMPPusher) Connect() (err error) {
-	pusher.NetConnection, err = NewRTMPClient(pusher.RemoteURL)
-	RTMPPlugin.Info("connect", zap.String("remoteURL", pusher.RemoteURL))
+	if pusher.NetConnection, err = NewRTMPClient(pusher.RemoteURL); err == nil {
+		pusher.SetIO(pusher.NetConnection.Conn)
+		RTMPPlugin.Info("connect", zap.String("remoteURL", pusher.RemoteURL))
+	}
 	return
 }
 
@@ -151,15 +164,18 @@ type RTMPPuller struct {
 }
 
 func (puller *RTMPPuller) Connect() (err error) {
-	puller.NetConnection, err = NewRTMPClient(puller.RemoteURL)
-	RTMPPlugin.Info("connect", zap.String("remoteURL", puller.RemoteURL))
+	if puller.NetConnection, err = NewRTMPClient(puller.RemoteURL); err == nil {
+		puller.SetIO(puller.NetConnection.Conn)
+		RTMPPlugin.Info("connect", zap.String("remoteURL", puller.RemoteURL))
+	}
 	return
 }
 
 func (puller *RTMPPuller) Pull() (err error) {
 	puller.absTs = make(map[uint32]uint32)
-	puller.SendMessage(RTMP_MSG_AMF0_COMMAND, &CommandMessage{"createStream", 2})
-	for {
+	defer puller.Stop()
+	err = puller.SendMessage(RTMP_MSG_AMF0_COMMAND, &CommandMessage{"createStream", 2})
+	for err == nil {
 		msg, err := puller.RecvMessage()
 		if err != nil {
 			break

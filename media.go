@@ -12,6 +12,8 @@ import (
 type RTMPSender struct {
 	Subscriber
 	NetStream
+	firstAudioSent bool
+	firstVideoSent bool
 }
 
 func (rtmp *RTMPSender) OnEvent(event any) {
@@ -25,9 +27,19 @@ func (rtmp *RTMPSender) OnEvent(event any) {
 	case VideoDeConf:
 		rtmp.sendAVMessage(0, v.AVCC, false, true)
 	case *AudioFrame:
-		rtmp.sendAVMessage(v.DeltaTime, v.AVCC, true, false)
+		if rtmp.firstAudioSent {
+			rtmp.sendAVMessage(v.DeltaTime, v.AVCC, true, false)
+		} else {
+			rtmp.firstAudioSent = true
+			rtmp.sendAVMessage(v.AbsTime, v.AVCC, true, true)
+		}
 	case *VideoFrame:
-		rtmp.sendAVMessage(v.DeltaTime, v.AVCC, false, false)
+		if rtmp.firstVideoSent {
+			rtmp.sendAVMessage(v.DeltaTime, v.AVCC, false, false)
+		} else {
+			rtmp.firstVideoSent = true
+			rtmp.sendAVMessage(v.AbsTime, v.AVCC, false, true)
+		}
 	default:
 		rtmp.Subscriber.OnEvent(event)
 	}
