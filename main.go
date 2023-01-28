@@ -62,7 +62,7 @@ func (c *RTMPConfig) OnEvent(event any) {
 }
 
 var conf = &RTMPConfig{
-	ChunkSize: 4096,
+	ChunkSize: 65536,
 	TCP:       config.TCP{ListenAddr: ":1935"},
 }
 var RTMPPlugin = InstallPlugin(conf)

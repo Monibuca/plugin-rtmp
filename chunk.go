@@ -1,8 +1,6 @@
 package rtmp
 
 import (
-	"encoding/binary"
-
 	"m7s.live/engine/v4/util"
 )
 
@@ -27,45 +25,31 @@ const (
 
 type Chunk struct {
 	ChunkHeader
-	Body    []byte
+	AVData  util.BLL
 	MsgData RtmpMessage
 }
 
-func (c *Chunk) Encode(msg RtmpMessage) {
-	c.MsgData = msg
-	c.Body = msg.Encode()
-	c.MessageLength = uint32(len(c.Body))
-}
-
 type ChunkHeader struct {
-	ChunkBasicHeader
-	ChunkMessageHeader
-	// Extended Timestamp (0 or 4 bytes): This field is present in certain
-	// circumstances depending on the encoded timestamp or timestamp
-	// delta field in the Chunk Message header. See Section 5.3.1.3 for
-	// more information
-
-	ExtendTimestamp uint32 `json:",omitempty"` // 标识该字段的数据可忽略
-}
-
-// Basic Header (1 to 3 bytes) : This field encodes the chunk stream ID
-// and the chunk type. Chunk type determines the format of the
-// encoded message header. The length(Basic Header) depends entirely on the chunk
-// stream ID, which is a variable-length field.
-type ChunkBasicHeader struct {
-	ChunkStreamID uint32 `json:""` // 6 bit. 3 ~ 65559, 0,1,2 reserved
-	ChunkType     byte   `json:""` // 2 bit.
-}
-
-// Message Header (0, 3, 7, or 11 bytes): This field encodes
-// information about the message being sent (whether in whole or in
-// part). The length can be determined using the chunk type
-// specified in the chunk header.
-type ChunkMessageHeader struct {
+	ChunkStreamID   uint32 `json:""`
 	Timestamp       uint32 `json:""` // 3 byte
 	MessageLength   uint32 `json:""` // 3 byte
 	MessageTypeID   byte   `json:""` // 1 byte
 	MessageStreamID uint32 `json:""` // 4 byte
+	// Extended Timestamp (0 or 4 bytes): This field is present in certain
+	// circumstances depending on the encoded timestamp or timestamp
+	// delta field in the Chunk Message header. See Section 5.3.1.3 for
+	// more information
+	ExtendTimestamp uint32 `json:",omitempty"` // 标识该字段的数据可忽略
+}
+
+func (c *ChunkHeader) SetTimestamp(timestamp uint32) {
+	if timestamp >= 0xFFFFFF {
+		c.ExtendTimestamp = timestamp
+		c.Timestamp = 0xFFFFFF
+	} else {
+		c.ExtendTimestamp = 0
+		c.Timestamp = timestamp
+	}
 }
 
 // ChunkBasicHeader会决定ChunkMessgaeHeader,ChunkMessgaeHeader有4种(0,3,7,11 Bytes),因此可能有4种头.
@@ -75,49 +59,22 @@ type ChunkMessageHeader struct {
 // 8  -> ChunkBasicHeader(1) + ChunkMessageHeader(7)
 // 12 -> ChunkBasicHeader(1) + ChunkMessageHeader(11)
 
-func (nc *NetConnection) encodeChunk12(head *ChunkHeader) []byte {
-	b := util.Buffer(make([]byte, 0, 16))
-	b.WriteByte(byte(RTMP_CHUNK_HEAD_12 + head.ChunkStreamID))
-	b.WriteUint24(head.Timestamp)
-	b.WriteUint24(head.MessageLength)
-	b.WriteByte(head.MessageTypeID)
-	binary.LittleEndian.PutUint32(b.Malloc(4), head.MessageStreamID)
-	if head.ChunkMessageHeader.Timestamp == 0xffffff {
-		binary.LittleEndian.PutUint32(b.Malloc(4), head.ExtendTimestamp)
+func (h *ChunkHeader) WriteTo(t byte, b *util.Buffer) {
+	b.Reset()
+	csid := byte(h.ChunkStreamID)
+	b.WriteByte(t + csid)
+
+	if t < RTMP_CHUNK_HEAD_1 {
+		b.WriteUint24(h.Timestamp)
+		if t < RTMP_CHUNK_HEAD_4 {
+			b.WriteUint24(h.MessageLength)
+			b.WriteByte(h.MessageTypeID)
+			if t < RTMP_CHUNK_HEAD_8 {
+				b.WriteUint32(h.MessageStreamID)
+			}
+		}
 	}
-	return b
-}
-
-func (nc *NetConnection) encodeChunk8(head *ChunkHeader) []byte {
-	b := util.Buffer(make([]byte, 0, 8))
-	b.WriteByte(byte(RTMP_CHUNK_HEAD_8 + head.ChunkStreamID))
-	b.WriteUint24(head.Timestamp)
-	b.WriteUint24(head.MessageLength)
-	b.WriteByte(head.MessageTypeID)
-	return b
-}
-
-// func (nc *NetConnection) encodeChunk4(head *ChunkHeader, payload []byte, size int) (need []byte, err error) {
-// 	if size > RTMP_MAX_CHUNK_SIZE || payload == nil || len(payload) == 0 {
-// 		return nil, errors.New("chunk error")
-// 	}
-// 	b := make([]byte, 4)
-// 	//chunkBasicHead
-// 	b[0] = byte(RTMP_CHUNK_HEAD_4 + head.ChunkStreamID)
-// 	util.PutBE(b[1:4], head.Timestamp)
-// 	nc.Write(b)
-// 	nc.writeSeqNum += 4
-// 	if len(payload) > size {
-// 		nc.Write(payload[0:size])
-// 		nc.writeSeqNum += uint32(size)
-// 		need = payload[size:]
-// 	} else {
-// 		nc.Write(payload)
-// 		nc.writeSeqNum += uint32(len(payload))
-// 	}
-// 	return
-// }
-
-func (nc *NetConnection) encodeChunk1(head *ChunkHeader) []byte {
-	return []byte{byte(RTMP_CHUNK_HEAD_1 + head.ChunkStreamID)}
+	if h.Timestamp == 0xffffff {
+		b.WriteUint32(h.ExtendTimestamp)
+	}
 }

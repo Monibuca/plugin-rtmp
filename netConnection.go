@@ -43,24 +43,42 @@ const (
 )
 
 type NetConnection struct {
-	*bufio.Reader      `json:"-"`
-	net.Conn           `json:"-"`
-	bandwidth          uint32
-	readSeqNum         uint32 // 当前读的字节
-	writeSeqNum        uint32 // 当前写的字节
-	totalWrite         uint32 // 总共写了多少字节
-	totalRead          uint32 // 总共读了多少字节
-	writeChunkSize     int
-	readChunkSize      int
-	incompleteRtmpBody map[uint32]*util.Buffer // 完整的RtmpBody,在网络上是被分成一块一块的,需要将其组装起来
-	rtmpHeader         map[uint32]*ChunkHeader // RtmpHeader
-	objectEncoding     float64
-	appName            string
-	tmpBuf             []byte //用来接收小数据，复用内存
+	*bufio.Reader   `json:"-"`
+	net.Conn        `json:"-"`
+	bandwidth       uint32
+	readSeqNum      uint32 // 当前读的字节
+	writeSeqNum     uint32 // 当前写的字节
+	totalWrite      uint32 // 总共写了多少字节
+	totalRead       uint32 // 总共读了多少字节
+	writeChunkSize  int
+	readChunkSize   int
+	incommingChunks map[uint32]*Chunk
+	objectEncoding  float64
+	appName         string
+	tmpBuf          util.Buffer //用来接收/发送小数据，复用内存
+	chunkHeader     util.Buffer
+	bytePool        util.BytesPool
 }
 
+func NewNetConnection(conn net.Conn) *NetConnection {
+	return &NetConnection{
+		Conn:            conn,
+		Reader:          bufio.NewReader(conn),
+		writeChunkSize:  RTMP_DEFAULT_CHUNK_SIZE,
+		readChunkSize:   RTMP_DEFAULT_CHUNK_SIZE,
+		incommingChunks: make(map[uint32]*Chunk),
+		bandwidth:       RTMP_MAX_CHUNK_SIZE << 3,
+		tmpBuf:          make(util.Buffer, 4),
+		chunkHeader:     make(util.Buffer, 0, 16),
+		bytePool:        make(util.BytesPool, 16),
+	}
+}
 func (conn *NetConnection) ReadFull(buf []byte) (n int, err error) {
-	return io.ReadFull(conn.Reader, buf)
+	n, err = io.ReadFull(conn.Reader, buf)
+	if err == nil {
+		conn.readSeqNum += uint32(n)
+	}
+	return
 }
 func (conn *NetConnection) SendStreamID(eventType uint16, streamID uint32) (err error) {
 	return conn.SendMessage(RTMP_MSG_USER_CONTROL, &StreamIDMessage{UserControlMessage{EventType: eventType}, streamID})
@@ -94,62 +112,58 @@ func (conn *NetConnection) ResponseCreateStream(tid uint64, streamID uint32) err
 
 func (conn *NetConnection) readChunk() (msg *Chunk, err error) {
 	head, err := conn.ReadByte()
-	conn.readSeqNum++
 	if err != nil {
 		return nil, err
 	}
-
+	conn.readSeqNum++
 	ChunkStreamID := uint32(head & 0x3f) // 0011 1111
 	ChunkType := head >> 6               // 1100 0000
-
 	// 如果块流ID为0,1的话,就需要计算.
 	ChunkStreamID, err = conn.readChunkStreamID(ChunkStreamID)
 	if err != nil {
 		return nil, errors.New("get chunk stream id error :" + err.Error())
 	}
+	// println("ChunkStreamID:", ChunkStreamID, "ChunkType:", ChunkType)
+	chunk, ok := conn.incommingChunks[ChunkStreamID]
 
-	h, ok := conn.rtmpHeader[ChunkStreamID]
-	if !ok {
-		h = &ChunkHeader{
-			ChunkBasicHeader: ChunkBasicHeader{
-				ChunkStreamID,
-				ChunkType,
-			},
-		}
-		conn.rtmpHeader[ChunkStreamID] = h
-	}
-	currentBody, ok := conn.incompleteRtmpBody[ChunkStreamID]
-	if ChunkType != 3 && ok && currentBody.Len() > 0 {
+	if ChunkType != 3 && ok && chunk.AVData.Length > 0 {
 		// 如果块类型不为3,那么这个rtmp的body应该为空.
 		return nil, errors.New("incompleteRtmpBody error")
 	}
-	if err = conn.readChunkType(h, ChunkType); err != nil {
+	if !ok {
+		chunk = &Chunk{}
+		conn.incommingChunks[ChunkStreamID] = chunk
+	}
+
+	if err = conn.readChunkType(&chunk.ChunkHeader, ChunkType); err != nil {
 		return nil, errors.New("get chunk type error :" + err.Error())
 	}
-	msgLen := int(h.MessageLength)
-
-	if !ok {
-		newBuffer := util.Buffer(make([]byte, 0, msgLen))
-		currentBody = &newBuffer
-		conn.incompleteRtmpBody[ChunkStreamID] = currentBody
-	}
+	msgLen := int(chunk.MessageLength)
 
 	needRead := conn.readChunkSize
-	if unRead := msgLen - currentBody.Len(); unRead < needRead {
+	if unRead := msgLen - chunk.AVData.ByteLength; unRead < needRead {
 		needRead = unRead
 	}
-	if n, err := conn.ReadFull(currentBody.Malloc(needRead)); err != nil {
+	mem := conn.bytePool.Get(needRead)
+	if n, err := conn.ReadFull(mem.Value); err != nil {
+		mem.Recycle()
 		return nil, err
 	} else {
 		conn.readSeqNum += uint32(n)
 	}
-	// 如果读完了一个完整的块,那么就返回这个消息,没读完继续递归读块.
-	if currentBody.Len() == msgLen {
-		msg = &Chunk{
-			ChunkHeader: *h,
-			Body:        currentBody.ReadN(msgLen),
+	chunk.AVData.Push(mem)
+	// println("read chunk body", chunk.MessageTypeID, chunk.AVData.ByteLength, ChunkType, msgLen, chunk.Timestamp, chunk.ExtendTimestamp)
+	if chunk.AVData.ByteLength == msgLen {
+		msg = chunk
+		switch chunk.MessageTypeID {
+		case RTMP_MSG_AUDIO, RTMP_MSG_VIDEO:
+		default:
+			err = GetRtmpMessage(msg, msg.AVData.ToBytes())
+			msg.AVData.Recycle()
 		}
-		err = GetRtmpMessage(msg)
+		conn.incommingChunks[ChunkStreamID] = &Chunk{
+			ChunkHeader: chunk.ChunkHeader,
+		}
 	}
 	return
 }
@@ -187,106 +201,53 @@ func (conn *NetConnection) readChunkStreamID(csid uint32) (chunkStreamID uint32,
 }
 
 func (conn *NetConnection) readChunkType(h *ChunkHeader, chunkType byte) (err error) {
-	b := conn.tmpBuf[:3]
-	switch chunkType {
-	case 0:
-		{
-			// Timestamp 3 bytes
-			if _, err := conn.ReadFull(b); err != nil {
-				return err
-			}
-			conn.readSeqNum += 3
-			util.GetBE(b, &h.Timestamp) //type = 0的时间戳为绝对时间,其他的都为相对时间
 
-			// Message Length 3 bytes
-			if _, err = conn.ReadFull(b); err != nil { // 读取Message Length,这里的长度指的是一条信令或者一帧视频数据或音频数据的长度,而不是Chunk data的长度.
+	conn.tmpBuf.Reset()
+	b4 := conn.tmpBuf.Malloc(4)
+	b3 := b4[:3]
+	if chunkType == 3 {
+		// 3个字节的时间戳
+	} else {
+		// Timestamp 3 bytes
+		if _, err = conn.ReadFull(b3); err != nil {
+			return err
+		}
+		util.GetBE(b3, &h.Timestamp)
+		if chunkType != 2 {
+			if _, err = conn.ReadFull(b3); err != nil {
 				return err
 			}
-			conn.readSeqNum += 3
-			util.GetBE(b, &h.MessageLength)
+			util.GetBE(b3, &h.MessageLength)
 			// Message Type ID 1 bytes
-			v, err := conn.ReadByte() // 读取Message Type ID
-			if err != nil {
+			if h.MessageTypeID, err = conn.ReadByte(); err != nil {
 				return err
 			}
 			conn.readSeqNum++
-			h.MessageTypeID = v
-
-			// Message Stream ID 4bytes
-			b = conn.tmpBuf
-			if _, err = conn.ReadFull(b); err != nil { // 读取Message Stream ID
-				return err
-			}
-			conn.readSeqNum += 4
-			h.MessageStreamID = binary.LittleEndian.Uint32(b)
-
-			// ExtendTimestamp 4 bytes
-			if h.Timestamp == 0xffffff { // 对于type 0的chunk,绝对时间戳在这里表示,如果时间戳值大于等于0xffffff(16777215),该值必须是0xffffff,且时间戳扩展字段必须发送,其他情况没有要求
-				if _, err = conn.ReadFull(b); err != nil {
+			if chunkType == 0 {
+				// Message Stream ID 4bytes
+				if _, err = conn.ReadFull(b4); err != nil { // 读取Message Stream ID
 					return err
 				}
-				conn.readSeqNum += 4
-				util.GetBE(b, &h.ExtendTimestamp)
+				h.MessageStreamID = binary.LittleEndian.Uint32(b4)
 			}
-		}
-	case 1:
-		{
-			// Timestamp 3 bytes
-			if _, err = conn.ReadFull(b); err != nil {
-				return err
-			}
-			conn.readSeqNum += 3
-			h.ChunkType = chunkType
-			util.GetBE(b, &h.Timestamp)
-			// Message Length 3 bytes
-			if _, err = conn.ReadFull(b); err != nil {
-				return err
-			}
-			conn.readSeqNum += 3
-			util.GetBE(b, &h.MessageLength)
-			// Message Type ID 1 bytes
-			v, err := conn.ReadByte()
-			if err != nil {
-				return err
-			}
-			conn.readSeqNum++
-			h.MessageTypeID = v
-
-			// ExtendTimestamp 4 bytes
-			if h.Timestamp == 0xffffff {
-				b = conn.tmpBuf
-				if _, err := conn.ReadFull(b); err != nil {
-					return err
-				}
-				conn.readSeqNum += 4
-				util.GetBE(b, &h.ExtendTimestamp)
-			}
-		}
-	case 2:
-		{
-			// Timestamp 3 bytes
-			if _, err = conn.ReadFull(b); err != nil {
-				return err
-			}
-			conn.readSeqNum += 3
-			h.ChunkType = chunkType
-			util.GetBE(b, &h.Timestamp)
-			// ExtendTimestamp 4 bytes
-			if h.Timestamp == 0xffffff {
-				b = conn.tmpBuf
-				if _, err := conn.ReadFull(b); err != nil {
-					return err
-				}
-				conn.readSeqNum += 4
-				util.GetBE(b, &h.ExtendTimestamp)
-			}
-		}
-	case 3:
-		{
-			//h.ChunkType = chunkType
 		}
 	}
 
+	// ExtendTimestamp 4 bytes
+	if h.Timestamp == 0xffffff { // 对于type 0的chunk,绝对时间戳在这里表示,如果时间戳值大于等于0xffffff(16777215),该值必须是0xffffff,且时间戳扩展字段必须发送,其他情况没有要求
+		if _, err = conn.ReadFull(b4); err != nil {
+			return err
+		}
+		util.GetBE(b4, &h.ExtendTimestamp)
+	} else {
+		if chunkType == 0 {
+			h.ExtendTimestamp = h.Timestamp
+			// println("timestamp", h.Timestamp)
+		} else if chunkType != 3 {
+			// println("extend timestamp", chunkType, h.Timestamp, h.ExtendTimestamp)
+			h.ExtendTimestamp += h.Timestamp
+		}
+	}
 	return nil
 }
 
@@ -301,8 +262,9 @@ func (conn *NetConnection) RecvMessage() (msg *Chunk, err error) {
 			switch msg.MessageTypeID {
 			case RTMP_MSG_CHUNK_SIZE:
 				conn.readChunkSize = int(msg.MsgData.(Uint32Message))
+				println("read chunk size", conn.readChunkSize)
 			case RTMP_MSG_ABORT:
-				delete(conn.incompleteRtmpBody, uint32(msg.MsgData.(Uint32Message)))
+				delete(conn.incommingChunks, uint32(msg.MsgData.(Uint32Message)))
 			case RTMP_MSG_ACK, RTMP_MSG_EDGE:
 			case RTMP_MSG_USER_CONTROL:
 				if _, ok := msg.MsgData.(*PingRequestMessage); ok {
@@ -320,11 +282,8 @@ func (conn *NetConnection) RecvMessage() (msg *Chunk, err error) {
 	return
 }
 func (conn *NetConnection) SendMessage(t byte, msg RtmpMessage) (err error) {
-	body := msg.Encode()
-	head := newChunkHeader(t)
-	head.MessageLength = uint32(len(body))
-	if sid, ok := msg.(HaveStreamID); ok {
-		head.MessageStreamID = sid.GetStreamID()
+	if conn == nil {
+		return errors.New("connection is nil")
 	}
 	if conn.writeSeqNum > conn.bandwidth {
 		conn.totalWrite += conn.writeSeqNum
@@ -332,26 +291,28 @@ func (conn *NetConnection) SendMessage(t byte, msg RtmpMessage) (err error) {
 		err = conn.SendMessage(RTMP_MSG_ACK, Uint32Message(conn.totalWrite))
 		err = conn.SendStreamID(RTMP_USER_PING_REQUEST, 0)
 	}
-	var chunk = net.Buffers{conn.encodeChunk12(head)}
-	if len(body) > conn.writeChunkSize {
-		chunk = append(chunk, body[:conn.writeChunkSize])
-		body = body[conn.writeChunkSize:]
-		conn.writeSeqNum += uint32(util.SizeOfBuffers(chunk))
-		_, err = chunk.WriteTo(conn)
-		for len(body) > conn.writeChunkSize {
-			chunk = append(chunk[:0], conn.encodeChunk12(head), body[:conn.writeChunkSize])
-			body = body[conn.writeChunkSize:]
-			conn.writeSeqNum += uint32(util.SizeOfBuffers(chunk))
-			_, err = chunk.WriteTo(conn)
-		}
-		chunk = append(chunk[:0], conn.encodeChunk12(head), body)
-		conn.writeSeqNum += uint32(util.SizeOfBuffers(chunk))
-		_, err = chunk.WriteTo(conn)
-	} else {
-		chunk = append(chunk, body)
-		conn.writeSeqNum += uint32(util.SizeOfBuffers(chunk))
-		_, err = chunk.WriteTo(conn)
+	conn.tmpBuf.Reset()
+	msg.Encode(&conn.tmpBuf)
+	head := newChunkHeader(t)
+	head.MessageLength = uint32(conn.tmpBuf.Len())
+	if sid, ok := msg.(HaveStreamID); ok {
+		head.MessageStreamID = sid.GetStreamID()
 	}
-
+	head.WriteTo(RTMP_CHUNK_HEAD_12, &conn.chunkHeader)
+	for _, chunk := range conn.tmpBuf.Split(conn.writeChunkSize) {
+		conn.sendChunk(chunk)
+	}
 	return nil
+}
+
+func (conn *NetConnection) sendChunk(writeBuffer ...[]byte) error {
+	if n, err := conn.Write(conn.chunkHeader); err != nil {
+		return err
+	} else {
+		conn.writeSeqNum += uint32(n)
+	}
+	buf := net.Buffers(writeBuffer)
+	n, err := buf.WriteTo(conn)
+	conn.writeSeqNum += uint32(n)
+	return err
 }

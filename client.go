@@ -1,7 +1,6 @@
 package rtmp
 
 import (
-	"bufio"
 	"crypto/tls"
 	"errors"
 	"net"
@@ -10,7 +9,6 @@ import (
 
 	"go.uber.org/zap"
 	"m7s.live/engine/v4"
-	"m7s.live/engine/v4/util"
 )
 
 func NewRTMPClient(addr string) (client *NetConnection, err error) {
@@ -49,16 +47,7 @@ func NewRTMPClient(addr string) (client *NetConnection, err error) {
 			conn.Close()
 		}
 	}()
-	client = &NetConnection{
-		Conn:               conn,
-		Reader:             bufio.NewReader(conn),
-		writeChunkSize:     conf.ChunkSize,
-		readChunkSize:      RTMP_DEFAULT_CHUNK_SIZE,
-		rtmpHeader:         make(map[uint32]*ChunkHeader),
-		incompleteRtmpBody: make(map[uint32]*util.Buffer),
-		bandwidth:          RTMP_MAX_CHUNK_SIZE << 3,
-		tmpBuf:             make([]byte, 4),
-	}
+	client = NewNetConnection(conn)
 	err = client.ClientHandshake()
 	if err != nil {
 		RTMPPlugin.Error("handshake", zap.Error(err))
@@ -69,6 +58,7 @@ func NewRTMPClient(addr string) (client *NetConnection, err error) {
 	if err != nil {
 		return
 	}
+	client.writeChunkSize = conf.ChunkSize
 	err = client.SendMessage(RTMP_MSG_AMF0_COMMAND, &CallMessage{
 		CommandMessage{"connect", 1},
 		map[string]any{
@@ -135,6 +125,9 @@ func (pusher *RTMPPusher) Push() error {
 					_, streamPath, _ := strings.Cut(URL.Path, "/")
 					_, streamPath, _ = strings.Cut(streamPath, "/")
 					pusher.Args = URL.Query()
+					if len(pusher.Args) > 0 {
+						streamPath += "?" + pusher.Args.Encode()
+					}
 					pusher.SendMessage(RTMP_MSG_AMF0_COMMAND, &PublishMessage{
 						CURDStreamMessage{
 							CommandMessage{
@@ -172,13 +165,12 @@ func (puller *RTMPPuller) Connect() (err error) {
 }
 
 func (puller *RTMPPuller) Pull() (err error) {
-	puller.absTs = make(map[uint32]uint32)
 	defer puller.Stop()
 	err = puller.SendMessage(RTMP_MSG_AMF0_COMMAND, &CommandMessage{"createStream", 2})
 	for err == nil {
 		msg, err := puller.RecvMessage()
 		if err != nil {
-			break
+			return err
 		}
 		switch msg.MessageTypeID {
 		case RTMP_MSG_AUDIO:
@@ -199,6 +191,9 @@ func (puller *RTMPPuller) Pull() (err error) {
 					ps := strings.Split(URL.Path, "/")
 					puller.Args = URL.Query()
 					m.StreamName = ps[len(ps)-1]
+					if len(puller.Args) > 0 {
+						m.StreamName += "?" + puller.Args.Encode()
+					}
 					puller.SendMessage(RTMP_MSG_AMF0_COMMAND, m)
 					// if response, ok := msg.MsgData.(*ResponsePlayMessage); ok {
 					// 	if response.Object["code"] == "NetStream.Play.Start" {

@@ -1,7 +1,6 @@
 package rtmp
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"net"
@@ -9,7 +8,6 @@ import (
 
 	"go.uber.org/zap"
 	"m7s.live/engine/v4"
-	"m7s.live/engine/v4/util"
 )
 
 type NetStream struct {
@@ -38,16 +36,7 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 	defer conn.Close()
 	senders := make(map[uint32]*RTMPSubscriber)
 	receivers := make(map[uint32]*RTMPReceiver)
-	nc := &NetConnection{
-		Conn:               conn,
-		Reader:             bufio.NewReader(conn),
-		writeChunkSize:     RTMP_DEFAULT_CHUNK_SIZE,
-		readChunkSize:      RTMP_DEFAULT_CHUNK_SIZE,
-		rtmpHeader:         make(map[uint32]*ChunkHeader),
-		incompleteRtmpBody: make(map[uint32]*util.Buffer),
-		bandwidth:          RTMP_MAX_CHUNK_SIZE << 3,
-		tmpBuf:             make([]byte, 4),
-	}
+	nc := NewNetConnection(conn)
 	ctx, cancel := context.WithCancel(engine.Engine)
 	defer cancel()
 	/* Handshake */
@@ -138,7 +127,6 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 					}
 					if RTMPPlugin.Publish(nc.appName+"/"+cmd.PublishingName, receiver) == nil {
 						receivers[cmd.StreamId] = receiver
-						receiver.absTs = make(map[uint32]uint32)
 						receiver.Begin()
 						err = receiver.Response(cmd.TransactionId, NetStream_Publish_Start, Level_Status)
 					} else {
