@@ -121,6 +121,8 @@ func (pusher *RTMPPusher) Push() error {
 			case Response_Result, Response_OnStatus:
 				if response, ok := msg.MsgData.(*ResponseCreateStreamMessage); ok {
 					pusher.StreamID = response.StreamId
+					pusher.audio.MessageStreamID = pusher.StreamID
+					pusher.video.MessageStreamID = pusher.StreamID
 					URL, _ := url.Parse(pusher.RemoteURL)
 					_, streamPath, _ := strings.Cut(URL.Path, "/")
 					_, streamPath, _ = strings.Cut(streamPath, "/")
