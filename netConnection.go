@@ -6,6 +6,8 @@ import (
 	"errors"
 	"io"
 	"net"
+	"runtime"
+	"sync/atomic"
 
 	"m7s.live/engine/v4/util"
 )
@@ -58,6 +60,7 @@ type NetConnection struct {
 	tmpBuf          util.Buffer //用来接收/发送小数据，复用内存
 	chunkHeader     util.Buffer
 	bytePool        util.BytesPool
+	writing         atomic.Bool // false 可写，true 不可写
 }
 
 func NewNetConnection(conn net.Conn) *NetConnection {
@@ -291,6 +294,10 @@ func (conn *NetConnection) SendMessage(t byte, msg RtmpMessage) (err error) {
 		err = conn.SendMessage(RTMP_MSG_ACK, Uint32Message(conn.totalWrite))
 		err = conn.SendStreamID(RTMP_USER_PING_REQUEST, 0)
 	}
+	for !conn.writing.CompareAndSwap(false, true) {
+		runtime.Gosched()
+	}
+	defer conn.writing.Store(false)
 	conn.tmpBuf.Reset()
 	msg.Encode(&conn.tmpBuf)
 	head := newChunkHeader(t)

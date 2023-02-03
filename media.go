@@ -2,6 +2,7 @@ package rtmp
 
 import (
 	"errors"
+	"runtime"
 
 	"go.uber.org/zap"
 	. "m7s.live/engine/v4"
@@ -17,11 +18,15 @@ type AVSender struct {
 func (av *AVSender) sendSequenceHead(seqHead []byte) {
 	av.SetTimestamp(0)
 	av.MessageLength = uint32(len(seqHead))
+	for !av.writing.CompareAndSwap(false, true) {
+		runtime.Gosched()
+	}
+	defer av.writing.Store(false)
 	av.WriteTo(RTMP_CHUNK_HEAD_12, &av.chunkHeader)
 	av.sendChunk(seqHead)
 }
 
-func (av *AVSender) sendFrame(frame *common.AVFrame,absTime uint32)  (err error) {
+func (av *AVSender) sendFrame(frame *common.AVFrame, absTime uint32) (err error) {
 	payloadLen := frame.AVCC.ByteLength
 	if payloadLen == 0 {
 		err := errors.New("payload is empty")
@@ -35,6 +40,10 @@ func (av *AVSender) sendFrame(frame *common.AVFrame,absTime uint32)  (err error)
 		av.SendStreamID(RTMP_USER_PING_REQUEST, 0)
 	}
 	av.MessageLength = uint32(payloadLen)
+	for !av.writing.CompareAndSwap(false, true) {
+		runtime.Gosched()
+	}
+	defer av.writing.Store(false)
 	// 第一次是发送关键帧,需要完整的消息头(Chunk Basic Header(1) + Chunk Message Header(11) + Extended Timestamp(4)(可能会要包括))
 	// 后面开始,就是直接发送音视频数据,那么直接发送,不需要完整的块(Chunk Basic Header(1) + Chunk Message Header(7))
 	// 当Chunk Type为0时(即Chunk12),
