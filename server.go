@@ -3,6 +3,7 @@ package rtmp
 import (
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"sync/atomic"
 
@@ -167,7 +168,11 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 					RTMPPlugin.Warn("ReceiveVideo", zap.Uint32("MessageStreamID", msg.MessageStreamID))
 				}
 			}
+		} else if err == io.EOF {
+			RTMPPlugin.Info("rtmp client closed", zap.String("remote", conn.RemoteAddr().String()))
+			return
 		} else {
+			RTMPPlugin.Warn("ReadMessage", zap.Error(err))
 			return
 		}
 	}
