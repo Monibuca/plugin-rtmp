@@ -150,20 +150,20 @@ func (r *RTMPReceiver) Response(tid uint64, code, level string) error {
 
 func (r *RTMPReceiver) ReceiveAudio(msg *Chunk) {
 	if r.AudioTrack == nil {
-		if r.WriteAVCCAudio(0, msg.AVData); r.AudioTrack != nil {
+		if r.WriteAVCCAudio(0, &msg.AVData); r.AudioTrack != nil {
 			r.AudioTrack.SetStuff(r.bytePool)
 		}
 		return
 	}
-	r.AudioTrack.WriteAVCC(msg.ExtendTimestamp, msg.AVData)
+	r.AudioTrack.WriteAVCC(msg.ExtendTimestamp, &msg.AVData)
 }
 
 func (r *RTMPReceiver) ReceiveVideo(msg *Chunk) {
 	if r.VideoTrack == nil {
-		if r.WriteAVCCVideo(0, msg.AVData); r.VideoTrack != nil {
+		if r.WriteAVCCVideo(0, &msg.AVData); r.VideoTrack != nil {
 			r.VideoTrack.SetStuff(r.bytePool)
 		}
 		return
 	}
-	r.VideoTrack.WriteAVCC(msg.ExtendTimestamp, msg.AVData)
+	r.VideoTrack.WriteAVCC(msg.ExtendTimestamp, &msg.AVData)
 }
