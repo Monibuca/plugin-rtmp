@@ -154,9 +154,8 @@ func (conn *NetConnection) readChunk() (msg *Chunk, err error) {
 	} else {
 		conn.readSeqNum += uint32(n)
 	}
-	chunk.AVData.Push(mem)
-	// println("read chunk body", chunk.MessageTypeID, chunk.AVData.ByteLength, ChunkType, msgLen, chunk.Timestamp, chunk.ExtendTimestamp)
-	if chunk.AVData.ByteLength == msgLen {
+	if chunk.AVData.Push(mem); chunk.AVData.ByteLength == msgLen {
+		chunk.ChunkHeader.ExtendTimestamp += chunk.ChunkHeader.Timestamp
 		msg = chunk
 		switch chunk.MessageTypeID {
 		case RTMP_MSG_AUDIO, RTMP_MSG_VIDEO:
@@ -204,7 +203,6 @@ func (conn *NetConnection) readChunkStreamID(csid uint32) (chunkStreamID uint32,
 }
 
 func (conn *NetConnection) readChunkType(h *ChunkHeader, chunkType byte) (err error) {
-
 	conn.tmpBuf.Reset()
 	b4 := conn.tmpBuf.Malloc(4)
 	b3 := b4[:3]
@@ -241,15 +239,11 @@ func (conn *NetConnection) readChunkType(h *ChunkHeader, chunkType byte) (err er
 		if _, err = conn.ReadFull(b4); err != nil {
 			return err
 		}
-		util.GetBE(b4, &h.ExtendTimestamp)
-	} else {
-		if chunkType == 0 {
-			h.ExtendTimestamp = h.Timestamp
-			// println("timestamp", h.Timestamp)
-		} else if chunkType != 3 {
-			// println("extend timestamp", chunkType, h.Timestamp, h.ExtendTimestamp)
-			h.ExtendTimestamp += h.Timestamp
-		}
+		util.GetBE(b4, &h.Timestamp)
+	}
+	if chunkType == 0 {
+		h.ExtendTimestamp = h.Timestamp
+		h.Timestamp = 0
 	}
 	return nil
 }
