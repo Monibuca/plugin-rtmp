@@ -59,13 +59,17 @@ func NewRTMPClient(addr string) (client *NetConnection, err error) {
 		return
 	}
 	client.writeChunkSize = conf.ChunkSize
+	path := u.Path
+	if len(u.Query()) != 0 {
+		path += "?" + u.RawQuery
+	}
 	err = client.SendMessage(RTMP_MSG_AMF0_COMMAND, &CallMessage{
 		CommandMessage{"connect", 1},
 		map[string]any{
 			"app":      client.appName,
 			"flashVer": "monibuca/" + engine.Engine.Version,
 			"swfUrl":   addr,
-			"tcUrl":    strings.TrimSuffix(addr, u.Path) + "/" + client.appName,
+			"tcUrl":    strings.TrimSuffix(addr, path) + "/" + client.appName,
 		},
 		nil,
 	})
