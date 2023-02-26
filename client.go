@@ -100,6 +100,7 @@ func NewRTMPClient(addr string) (client *NetConnection, err error) {
 type RTMPPusher struct {
 	RTMPSender
 	engine.Pusher
+	isClientStop bool
 }
 
 func (pusher *RTMPPusher) Connect() (err error) {
@@ -155,6 +156,17 @@ func (pusher *RTMPPusher) Push() error {
 			}
 		}
 	}
+}
+
+func (pusher *RTMPPusher) OnEvent(event any) {
+	switch event.(type) {
+	case engine.SEclose:
+		pusher.isClientStop = true
+	}
+}
+
+func (pusher *RTMPPusher) IsShutdown() bool {
+	return pusher.isClientStop
 }
 
 type RTMPPuller struct {
