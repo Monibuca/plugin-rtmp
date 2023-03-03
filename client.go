@@ -112,7 +112,6 @@ func (pusher *RTMPPusher) Connect() (err error) {
 
 func (pusher *RTMPPusher) Push() error {
 	pusher.SendMessage(RTMP_MSG_AMF0_COMMAND, &CommandMessage{"createStream", 2})
-	defer pusher.Stop()
 	for {
 		msg, err := pusher.RecvMessage()
 		if err != nil {

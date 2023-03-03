@@ -102,19 +102,19 @@ func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
 						delete(senders, cmd.StreamId)
 					}
 				case *ReleaseStreamMessage:
-					m := &CommandMessage{
-						CommandName:   "releaseStream_error",
-						TransactionId: cmd.TransactionId,
-					}
+					// m := &CommandMessage{
+					// 	CommandName:   "releaseStream_error",
+					// 	TransactionId: cmd.TransactionId,
+					// }
 					s := engine.Streams.Get(nc.appName + "/" + cmd.StreamName)
 					if s != nil && s.Publisher != nil {
 						if p, ok := s.Publisher.(*RTMPReceiver); ok {
-							m.CommandName = "releaseStream_result"
+							// m.CommandName = "releaseStream_result"
 							p.Stop()
 							delete(receivers, p.StreamID)
 						}
 					}
-					err = nc.SendMessage(RTMP_MSG_AMF0_COMMAND, m)
+					// err = nc.SendMessage(RTMP_MSG_AMF0_COMMAND, m)
 				case *PublishMessage:
 					receiver := &RTMPReceiver{
 						NetStream: NetStream{
