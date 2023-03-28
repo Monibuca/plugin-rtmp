@@ -43,7 +43,7 @@ func (c *RTMPConfig) OnEvent(event any) {
 		}
 	case SEpublish:
 		for streamPath, url := range c.PushList {
-			if streamPath == v.Stream.Path {
+			if streamPath == v.Target.Path {
 				if err := RTMPPlugin.Push(streamPath, url, new(RTMPPusher), false); err != nil {
 					RTMPPlugin.Error("push", zap.String("streamPath", streamPath), zap.String("url", url), zap.Error(err))
 				}
