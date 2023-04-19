@@ -121,6 +121,25 @@ type RTMPReceiver struct {
 	NetStream
 }
 
+func (r *RTMPReceiver) OnEvent(event any) {
+	switch v := event.(type) {
+	case IPublisher:
+		if r.Equal(v) { //第一任
+
+		} else { // 使用前任的track，因为订阅者都挂在前任的上面
+			r.Publisher.OnEvent(event)
+			if r.AudioTrack != nil {
+				r.AudioTrack.SetStuff(r.bytePool)
+			}
+			if r.VideoTrack != nil {
+				r.VideoTrack.SetStuff(r.bytePool)
+			}
+		}
+	default:
+		r.IO.OnEvent(event)
+	}
+}
+
 func (r *RTMPReceiver) Response(tid uint64, code, level string) error {
 	m := new(ResponsePublishMessage)
 	m.CommandName = Response_OnStatus

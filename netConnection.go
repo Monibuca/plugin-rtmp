@@ -45,8 +45,8 @@ const (
 )
 
 type NetConnection struct {
-	*bufio.Reader   `json:"-"`
-	net.Conn        `json:"-"`
+	*bufio.Reader   `json:"-" yaml:"-"`
+	net.Conn        `json:"-" yaml:"-"`
 	bandwidth       uint32
 	readSeqNum      uint32 // 当前读的字节
 	writeSeqNum     uint32 // 当前写的字节
