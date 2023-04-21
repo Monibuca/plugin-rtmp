@@ -346,6 +346,7 @@ func (amf *AMF) readObject() (m AMFObjects, err error) {
 
 func readBytes(buf *bytes.Buffer, length int) (b []byte, err error) {
 	b = utils.GetSlice(length)
+	defer utils.RecycleSlice(b)
 	if i, _ := buf.Read(b); length != i {
 		err = errors.New(fmt.Sprintf("not enough bytes,%v/%v", buf.Len(), length))
 	}
