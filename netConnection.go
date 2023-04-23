@@ -255,7 +255,7 @@ func (conn *NetConnection) RecvMessage() (msg *Chunk, err error) {
 		err = conn.SendMessage(RTMP_MSG_ACK, Uint32Message(conn.totalRead))
 	}
 	for msg == nil && err == nil {
-		if msg, err = conn.readChunk(); msg != nil {
+		if msg, err = conn.readChunk(); msg != nil && err == nil {
 			switch msg.MessageTypeID {
 			case RTMP_MSG_CHUNK_SIZE:
 				conn.readChunkSize = int(msg.MsgData.(Uint32Message))
