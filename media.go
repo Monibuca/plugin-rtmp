@@ -2,6 +2,7 @@ package rtmp
 
 import (
 	"errors"
+	"net"
 	"runtime"
 
 	"go.uber.org/zap"
@@ -27,6 +28,7 @@ func (av *AVSender) sendSequenceHead(seqHead []byte) {
 }
 
 func (av *AVSender) sendFrame(frame *common.AVFrame, absTime uint32) (err error) {
+	seq := frame.Sequence
 	payloadLen := frame.AVCC.ByteLength
 	if payloadLen == 0 {
 		err := errors.New("payload is empty")
@@ -55,17 +57,22 @@ func (av *AVSender) sendFrame(frame *common.AVFrame, absTime uint32) (err error)
 		av.SetTimestamp(frame.DeltaTime)
 		av.WriteTo(RTMP_CHUNK_HEAD_8, &av.chunkHeader)
 	}
-	r := frame.AVCC.NewReader()
-	chunk := r.ReadN(av.writeChunkSize)
-	// payloadLen -= util.SizeOfBuffers(chunk)
-	av.sendChunk(chunk...)
-	if r.CanRead() {
-		// 如果在音视频数据太大,一次发送不完,那么这里进行分割(data + Chunk Basic Header(1))
-		for av.WriteTo(RTMP_CHUNK_HEAD_1, &av.chunkHeader); r.CanRead(); av.sendChunk(chunk...) {
-			chunk = r.ReadN(av.writeChunkSize)
-			// payloadLen -= util.SizeOfBuffers(chunk)
-		}
+	//数据被覆盖导致序号变了
+	if seq != frame.Sequence {
+		return errors.New("sequence is not equal")
 	}
+	r := frame.AVCC.NewReader()
+	chunk := net.Buffers{av.chunkHeader}
+	av.writeSeqNum += uint32(av.chunkHeader.Len() + r.WriteNTo(av.writeChunkSize, &chunk))
+	for r.CanRead() {
+		item := av.bytePool.Get(16)
+		defer item.Recycle()
+		av.WriteTo(RTMP_CHUNK_HEAD_1, &item.Value)
+		// 如果在音视频数据太大,一次发送不完,那么这里进行分割(data + Chunk Basic Header(1))
+		chunk = append(chunk, item.Value)
+		av.writeSeqNum += uint32(item.Value.Len() + r.WriteNTo(av.writeChunkSize, &chunk))
+	}
+	chunk.WriteTo(av.Conn)
 	return nil
 }
 
