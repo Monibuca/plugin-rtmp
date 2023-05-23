@@ -68,14 +68,12 @@ var conf = &RTMPConfig{
 var RTMPPlugin = InstallPlugin(conf)
 
 func filterStreams() (ss []*Stream) {
-	Streams.RLock()
-	defer Streams.RUnlock()
-	for _, s := range Streams.Map {
+	Streams.Range(func(key string, s *Stream) {
 		switch s.Publisher.(type) {
 		case *RTMPReceiver, *RTMPPuller:
 			ss = append(ss, s)
 		}
-	}
+	})
 	return
 }
 
