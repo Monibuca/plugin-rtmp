@@ -33,7 +33,7 @@ func (s *RTMPSubscriber) OnEvent(event any) {
 	}
 	s.RTMPSender.OnEvent(event)
 }
-func (config *RTMPConfig) ServeTCP(conn *net.TCPConn) {
+func (config *RTMPConfig) ServeTCP(conn net.Conn) {
 	defer conn.Close()
 	senders := make(map[uint32]*RTMPSubscriber)
 	receivers := make(map[uint32]*RTMPReceiver)

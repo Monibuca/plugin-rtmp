@@ -13,6 +13,7 @@ import (
 )
 
 type RTMPConfig struct {
+	config.HTTP
 	config.Publish
 	config.Subscribe
 	config.TCP
@@ -30,19 +31,15 @@ func pull(streamPath, url string) {
 func (c *RTMPConfig) OnEvent(event any) {
 	switch v := event.(type) {
 	case FirstConfig:
-		if c.ListenAddr != "" {
-			RTMPPlugin.Info("server rtmp start at", zap.String("listen addr", c.ListenAddr))
-			go c.Listen(RTMPPlugin, c)
-		}
 		for streamPath, url := range c.PullOnStart {
 			pull(streamPath, url)
 		}
 	case config.Config:
 		RTMPPlugin.CancelFunc()
-		if c.ListenAddr != "" {
+		if c.TCP.ListenAddr != "" {
 			RTMPPlugin.Context, RTMPPlugin.CancelFunc = context.WithCancel(Engine)
-			RTMPPlugin.Info("server rtmp start at", zap.String("listen addr", c.ListenAddr))
-			go c.Listen(RTMPPlugin, c)
+			RTMPPlugin.Info("server rtmp start at", zap.String("listen addr", c.TCP.ListenAddr))
+			go c.ListenTCP(RTMPPlugin, c)
 		}
 	case SEpublish:
 		if url, ok := c.PushList[v.Target.Path]; ok {
@@ -61,6 +58,7 @@ var conf = &RTMPConfig{
 	ChunkSize: 65536,
 	TCP:       config.TCP{ListenAddr: ":1935"},
 }
+
 var RTMPPlugin = InstallPlugin(conf)
 
 func filterStreams() (ss []*Stream) {
