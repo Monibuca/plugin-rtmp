@@ -106,14 +106,14 @@ func (config *RTMPConfig) ServeTCP(conn net.Conn) {
 					// 	CommandName:   "releaseStream_error",
 					// 	TransactionId: cmd.TransactionId,
 					// }
-					s := engine.Streams.Get(nc.appName + "/" + cmd.StreamName)
-					if s != nil && s.Publisher != nil {
-						if p, ok := s.Publisher.(*RTMPReceiver); ok {
-							// m.CommandName = "releaseStream_result"
-							p.Stop()
-							delete(receivers, p.StreamID)
-						}
-					}
+					// s := engine.Streams.Get(nc.appName + "/" + cmd.StreamName)
+					// if s != nil && s.Publisher != nil {
+					// 	if p, ok := s.Publisher.(*RTMPReceiver); ok {
+					// 		// m.CommandName = "releaseStream_result"
+					// 		p.Stop()
+					// 		delete(receivers, p.StreamID)
+					// 	}
+					// }
 					// err = nc.SendMessage(RTMP_MSG_AMF0_COMMAND, m)
 				case *PublishMessage:
 					receiver := &RTMPReceiver{
