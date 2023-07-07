@@ -37,6 +37,14 @@ func (config *RTMPConfig) ServeTCP(conn net.Conn) {
 	defer conn.Close()
 	senders := make(map[uint32]*RTMPSubscriber)
 	receivers := make(map[uint32]*RTMPReceiver)
+	defer func() {
+		for _, sender := range senders {
+			sender.Stop()
+		}
+		for _, receiver := range receivers {
+			receiver.Stop()
+		}
+	}()
 	nc := NewNetConnection(conn)
 	ctx, cancel := context.WithCancel(engine.Engine)
 	defer cancel()
