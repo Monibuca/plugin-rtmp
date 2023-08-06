@@ -35,26 +35,30 @@ func (s *RTMPSubscriber) OnEvent(event any) {
 }
 func (config *RTMPConfig) ServeTCP(conn net.Conn) {
 	defer conn.Close()
+	zapRemote := zap.String("remote", conn.RemoteAddr().String())
 	senders := make(map[uint32]*RTMPSubscriber)
 	receivers := make(map[uint32]*RTMPReceiver)
+	var err error
 	defer func() {
+		ze := zap.Error(err)
 		for _, sender := range senders {
-			sender.Stop()
+			sender.Stop(ze)
 		}
 		for _, receiver := range receivers {
-			receiver.Stop()
+			receiver.Stop(ze)
 		}
 	}()
 	nc := NewNetConnection(conn)
 	ctx, cancel := context.WithCancel(engine.Engine)
 	defer cancel()
 	/* Handshake */
-	if err := nc.Handshake(); err != nil {
-		RTMPPlugin.Error("handshake", zap.Error(err))
+	if err = nc.Handshake(); err != nil {
+		RTMPPlugin.Error("handshake", zap.Error(err), zapRemote)
 		return
 	}
+	var msg *Chunk
 	for {
-		if msg, err := nc.RecvMessage(); err == nil {
+		if msg, err = nc.RecvMessage(); err == nil {
 			if msg.MessageLength <= 0 {
 				continue
 			}
@@ -64,7 +68,7 @@ func (config *RTMPConfig) ServeTCP(conn net.Conn) {
 					break
 				}
 				cmd := msg.MsgData.(Commander).GetCommand()
-				RTMPPlugin.Debug("recv cmd", zap.String("commandName", cmd.CommandName), zap.Uint32("streamID", msg.MessageStreamID))
+				RTMPPlugin.Debug("recv cmd", zap.String("commandName", cmd.CommandName), zap.Uint32("streamID", msg.MessageStreamID), zapRemote)
 				switch cmd := msg.MsgData.(type) {
 				case *CallMessage: //connect
 					app := cmd.Object["app"]                       // 客户端要连接到的服务应用名
@@ -76,7 +80,7 @@ func (config *RTMPConfig) ServeTCP(conn net.Conn) {
 						nc.objectEncoding = 0
 					}
 					nc.appName = app.(string)
-					RTMPPlugin.Info("connect", zap.String("appName", nc.appName), zap.Float64("objectEncoding", nc.objectEncoding))
+					RTMPPlugin.Info("connect", zap.String("appName", nc.appName), zap.Float64("objectEncoding", nc.objectEncoding), zapRemote)
 					err = nc.SendMessage(RTMP_MSG_ACK_SIZE, Uint32Message(512<<10))
 					nc.writeChunkSize = config.ChunkSize
 					err = nc.SendMessage(RTMP_MSG_CHUNK_SIZE, Uint32Message(config.ChunkSize))
@@ -102,7 +106,7 @@ func (config *RTMPConfig) ServeTCP(conn net.Conn) {
 					err = nc.SendMessage(RTMP_MSG_AMF0_COMMAND, m)
 				case *CommandMessage: // "createStream"
 					streamId := atomic.AddUint32(&gstreamid, 1)
-					RTMPPlugin.Info("createStream:", zap.Uint32("streamId", streamId))
+					RTMPPlugin.Info("createStream:", zap.Uint32("streamId", streamId), zapRemote)
 					nc.ResponseCreateStream(cmd.TransactionId, streamId)
 				case *CURDStreamMessage:
 					if stream, ok := receivers[cmd.StreamId]; ok {
@@ -167,20 +171,20 @@ func (config *RTMPConfig) ServeTCP(conn net.Conn) {
 				if r, ok := receivers[msg.MessageStreamID]; ok {
 					r.ReceiveAudio(msg)
 				} else {
-					RTMPPlugin.Warn("ReceiveAudio", zap.Uint32("MessageStreamID", msg.MessageStreamID))
+					RTMPPlugin.Warn("ReceiveAudio", zap.Uint32("MessageStreamID", msg.MessageStreamID), zapRemote)
 				}
 			case RTMP_MSG_VIDEO:
 				if r, ok := receivers[msg.MessageStreamID]; ok {
 					r.ReceiveVideo(msg)
 				} else {
-					RTMPPlugin.Warn("ReceiveVideo", zap.Uint32("MessageStreamID", msg.MessageStreamID))
+					RTMPPlugin.Warn("ReceiveVideo", zap.Uint32("MessageStreamID", msg.MessageStreamID), zapRemote)
 				}
 			}
-		} else if err == io.EOF {
-			RTMPPlugin.Info("rtmp client closed", zap.String("remote", conn.RemoteAddr().String()))
+		} else if err == io.EOF || err == io.ErrUnexpectedEOF {
+			RTMPPlugin.Info("rtmp client closed", zapRemote)
 			return
 		} else {
-			RTMPPlugin.Warn("ReadMessage", zap.Error(err))
+			RTMPPlugin.Warn("ReadMessage", zap.Error(err), zapRemote)
 			return
 		}
 	}
