@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 	"strconv"
-	"time"
 
 	"go.uber.org/zap"
 	. "m7s.live/engine/v4"
@@ -47,9 +46,9 @@ func (c *RTMPConfig) OnEvent(event any) {
 				RTMPPlugin.Error("push", zap.String("streamPath", v.Target.Path), zap.String("url", url), zap.Error(err))
 			}
 		}
-	case *Stream: //按需拉流
-		if url, ok := c.PullOnSub[v.Path]; ok {
-			pull(v.Path, url)
+	case InvitePublish: //按需拉流
+		if url, ok := c.PullOnSub[v.Target]; ok {
+			pull(v.Target, url)
 		}
 	}
 }
@@ -72,24 +71,24 @@ func filterStreams() (ss []*Stream) {
 }
 
 func (*RTMPConfig) API_list(w http.ResponseWriter, r *http.Request) {
-	util.ReturnJson(filterStreams, time.Second, w, r)
+	util.ReturnFetchValue(filterStreams, w, r)
 }
 
 func (*RTMPConfig) API_Pull(rw http.ResponseWriter, r *http.Request) {
 	save, _ := strconv.Atoi(r.URL.Query().Get("save"))
 	err := RTMPPlugin.Pull(r.URL.Query().Get("streamPath"), r.URL.Query().Get("target"), new(RTMPPuller), save)
 	if err != nil {
-		http.Error(rw, err.Error(), http.StatusBadRequest)
+		util.ReturnError(util.APIErrorQueryParse, err.Error(), rw, r)
 	} else {
-		rw.Write([]byte("ok"))
+		util.ReturnOK(rw, r)
 	}
 }
 
 func (*RTMPConfig) API_Push(rw http.ResponseWriter, r *http.Request) {
 	err := RTMPPlugin.Push(r.URL.Query().Get("streamPath"), r.URL.Query().Get("target"), new(RTMPPusher), r.URL.Query().Has("save"))
 	if err != nil {
-		http.Error(rw, err.Error(), http.StatusBadRequest)
+		util.ReturnError(util.APIErrorQueryParse, err.Error(), rw, r)
 	} else {
-		rw.Write([]byte("ok"))
+		util.ReturnOK(rw, r)
 	}
 }

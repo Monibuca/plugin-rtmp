@@ -109,7 +109,9 @@ func (pusher *RTMPPusher) Connect() (err error) {
 	}
 	return
 }
-
+func (pusher *RTMPPusher) Disconnect() {
+	pusher.NetConnection.Close()
+}
 func (pusher *RTMPPusher) Push() error {
 	pusher.SendMessage(RTMP_MSG_AMF0_COMMAND, &CommandMessage{"createStream", 2})
 	for {
@@ -167,6 +169,11 @@ func (puller *RTMPPuller) Connect() (err error) {
 		RTMPPlugin.Info("connect", zap.String("remoteURL", puller.RemoteURL))
 	}
 	return
+}
+func (puller *RTMPPuller) Disconnect() {
+	if puller.NetConnection != nil {
+		puller.NetConnection.Close()
+	}
 }
 
 func (puller *RTMPPuller) Pull() (err error) {
