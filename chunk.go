@@ -1,6 +1,8 @@
 package rtmp
 
 import (
+	"encoding/binary"
+
 	"m7s.live/engine/v4/util"
 )
 
@@ -70,7 +72,7 @@ func (h *ChunkHeader) WriteTo(t byte, b *util.Buffer) {
 			b.WriteUint24(h.MessageLength)
 			b.WriteByte(h.MessageTypeID)
 			if t < RTMP_CHUNK_HEAD_8 {
-				b.WriteUint32(h.MessageStreamID)
+				binary.LittleEndian.PutUint32(b.Malloc(4), h.MessageStreamID)
 			}
 		}
 	}

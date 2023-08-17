@@ -3,6 +3,7 @@ package rtmp
 import (
 	"crypto/tls"
 	"errors"
+	"fmt"
 	"net"
 	"net/url"
 	"strings"
@@ -92,6 +93,8 @@ func NewRTMPClient(addr string) (client *NetConnection, err error) {
 				} else {
 					return nil, err
 				}
+			default:
+				fmt.Println(cmd.CommandName)
 			}
 		}
 	}
@@ -197,7 +200,7 @@ func (puller *RTMPPuller) Pull() (err error) {
 					puller.StreamID = response.StreamId
 					m := &PlayMessage{}
 					m.StreamId = response.StreamId
-					m.TransactionId = 1
+					m.TransactionId = 4
 					m.CommandMessage.CommandName = "play"
 					URL, _ := url.Parse(puller.RemoteURL)
 					ps := strings.Split(URL.Path, "/")
