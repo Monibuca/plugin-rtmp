@@ -113,7 +113,9 @@ func (pusher *RTMPPusher) Connect() (err error) {
 	return
 }
 func (pusher *RTMPPusher) Disconnect() {
-	pusher.NetConnection.Close()
+	if pusher.NetConnection != nil {
+		pusher.NetConnection.Close()
+	}
 }
 func (pusher *RTMPPusher) Push() error {
 	pusher.SendMessage(RTMP_MSG_AMF0_COMMAND, &CommandMessage{"createStream", 2})
