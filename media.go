@@ -72,7 +72,7 @@ func (av *AVSender) sendFrame(frame *common.AVFrame, absTime uint32) (err error)
 		chunk = append(chunk, item.Value)
 		av.writeSeqNum += uint32(item.Value.Len() + r.WriteNTo(av.writeChunkSize, &chunk))
 	}
-	chunk.WriteTo(av.Conn)
+	_, err = chunk.WriteTo(av.Conn)
 	return nil
 }
 
@@ -102,9 +102,13 @@ func (rtmp *RTMPSender) OnEvent(event any) {
 	case VideoDeConf:
 		rtmp.video.sendSequenceHead(v)
 	case AudioFrame:
-		rtmp.audio.sendFrame(v.AVFrame, v.AbsTime)
+		if err := rtmp.audio.sendFrame(v.AVFrame, v.AbsTime); err != nil {
+			rtmp.Stop(zap.Error(err))
+		}
 	case VideoFrame:
-		rtmp.video.sendFrame(v.AVFrame, v.AbsTime)
+		if err := rtmp.video.sendFrame(v.AVFrame, v.AbsTime); err != nil {
+			rtmp.Stop(zap.Error(err))
+		}
 	default:
 		rtmp.Subscriber.OnEvent(event)
 	}
