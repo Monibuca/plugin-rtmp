@@ -47,8 +47,8 @@ func (c *RTMPConfig) OnEvent(event any) {
 			}
 		}
 	case InvitePublish: //按需拉流
-		if url, ok := c.PullOnSub[v.Target]; ok {
-			pull(v.Target, url)
+	if remoteURL := conf.CheckPullOnSub(v.Target); remoteURL != "" {
+			pull(v.Target, remoteURL)
 		}
 	}
 }
