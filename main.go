@@ -41,9 +41,9 @@ func (c *RTMPConfig) OnEvent(event any) {
 			go c.ListenTCP(RTMPPlugin, c)
 		}
 	case SEpublish:
-		if url, ok := c.PushList[v.Target.Path]; ok {
-			if err := RTMPPlugin.Push(v.Target.Path, url, new(RTMPPusher), false); err != nil {
-				RTMPPlugin.Error("push", zap.String("streamPath", v.Target.Path), zap.String("url", url), zap.Error(err))
+		if remoteURL := conf.CheckPush(v.Target.Path); remoteURL != "" {
+			if err := RTMPPlugin.Push(v.Target.Path, remoteURL, new(RTMPPusher), false); err != nil {
+				RTMPPlugin.Error("push", zap.String("streamPath", v.Target.Path), zap.String("url", remoteURL), zap.Error(err))
 			}
 		}
 	case InvitePublish: //按需拉流
