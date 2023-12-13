@@ -18,8 +18,8 @@ type RTMPConfig struct {
 	config.TCP
 	config.Pull
 	config.Push
-	ChunkSize int
-	KeepAlive bool //保持rtmp连接，默认随着stream的close而主动断开
+	ChunkSize int  `default:"65535" desc:"分片大小"`
+	KeepAlive bool `desc:"保持连接，流断开不关闭连接"` //保持rtmp连接，默认随着stream的close而主动断开
 }
 
 func pull(streamPath, url string) {
@@ -47,15 +47,14 @@ func (c *RTMPConfig) OnEvent(event any) {
 			}
 		}
 	case InvitePublish: //按需拉流
-	if remoteURL := conf.CheckPullOnSub(v.Target); remoteURL != "" {
+		if remoteURL := conf.CheckPullOnSub(v.Target); remoteURL != "" {
 			pull(v.Target, remoteURL)
 		}
 	}
 }
 
 var conf = &RTMPConfig{
-	ChunkSize: 65536,
-	TCP:       config.TCP{ListenAddr: ":1935"},
+	TCP: config.TCP{ListenAddr: ":1935"},
 }
 
 var RTMPPlugin = InstallPlugin(conf)
