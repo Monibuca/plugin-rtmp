@@ -143,6 +143,7 @@ func (config *RTMPConfig) ServeTCP(conn net.Conn) {
 						receiver.Begin()
 						err = receiver.Response(cmd.TransactionId, NetStream_Publish_Start, Level_Status)
 					} else {
+						delete(receivers, cmd.StreamId)
 						err = receiver.Response(cmd.TransactionId, NetStream_Publish_BadName, Level_Error)
 					}
 				case *PlayMessage:
