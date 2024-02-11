@@ -23,7 +23,11 @@ func (av *AVSender) sendSequenceHead(seqHead []byte) {
 		runtime.Gosched()
 	}
 	defer av.writing.Store(false)
-	av.WriteTo(RTMP_CHUNK_HEAD_12, &av.chunkHeader)
+	if av.firstSent {
+		av.WriteTo(RTMP_CHUNK_HEAD_8, &av.chunkHeader)
+	} else {
+		av.WriteTo(RTMP_CHUNK_HEAD_12, &av.chunkHeader)
+	}
 	av.sendChunk(seqHead)
 }
 
