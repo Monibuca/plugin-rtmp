@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"sync/atomic"
 
+	"go.uber.org/zap"
 	"m7s.live/engine/v4/util"
 )
 
@@ -259,7 +260,7 @@ func (conn *NetConnection) RecvMessage() (msg *Chunk, err error) {
 			switch msg.MessageTypeID {
 			case RTMP_MSG_CHUNK_SIZE:
 				conn.readChunkSize = int(msg.MsgData.(Uint32Message))
-				println("read chunk size", conn.readChunkSize)
+				RTMPPlugin.Info("msg read chunk size", zap.Int("readChunkSize", conn.readChunkSize))
 			case RTMP_MSG_ABORT:
 				delete(conn.incommingChunks, uint32(msg.MsgData.(Uint32Message)))
 			case RTMP_MSG_ACK, RTMP_MSG_EDGE:
@@ -293,7 +294,14 @@ func (conn *NetConnection) SendMessage(t byte, msg RtmpMessage) (err error) {
 	}
 	defer conn.writing.Store(false)
 	conn.tmpBuf.Reset()
-	msg.Encode(&conn.tmpBuf)
+	amf := util.AMF{conn.tmpBuf}
+	if conn.objectEncoding == 0 {
+		msg.Encode(&amf)
+	} else {
+		amf := util.AMF3{AMF: amf}
+		msg.Encode(&amf)
+	}
+	conn.tmpBuf = amf.Buffer
 	head := newChunkHeader(t)
 	head.MessageLength = uint32(conn.tmpBuf.Len())
 	if sid, ok := msg.(HaveStreamID); ok {

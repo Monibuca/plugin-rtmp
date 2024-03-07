@@ -54,7 +54,7 @@ func NewRTMPClient(addr string) (client *NetConnection, err error) {
 		RTMPPlugin.Error("handshake", zap.Error(err))
 		return nil, err
 	}
-	client.appName = ps[1]
+	client.appName = strings.Join(ps[1:len(ps)-1], "/")
 	err = client.SendMessage(RTMP_MSG_CHUNK_SIZE, Uint32Message(conf.ChunkSize))
 	if err != nil {
 		return
