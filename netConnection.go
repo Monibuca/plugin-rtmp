@@ -84,6 +84,13 @@ func (conn *NetConnection) ReadFull(buf []byte) (n int, err error) {
 	}
 	return
 }
+func (conn *NetConnection) ReadByte() (b byte, err error) {
+	b, err = conn.Reader.ReadByte()
+	if err == nil {
+		conn.readSeqNum++
+	}
+	return
+}
 func (conn *NetConnection) SendStreamID(eventType uint16, streamID uint32) (err error) {
 	return conn.SendMessage(RTMP_MSG_USER_CONTROL, &StreamIDMessage{UserControlMessage{EventType: eventType}, streamID})
 }
@@ -119,7 +126,6 @@ func (conn *NetConnection) readChunk() (msg *Chunk, err error) {
 	if err != nil {
 		return nil, err
 	}
-	conn.readSeqNum++
 	ChunkStreamID := uint32(head & 0x3f) // 0011 1111
 	ChunkType := head >> 6               // 1100 0000
 	// 如果块流ID为0,1的话,就需要计算.
@@ -149,11 +155,9 @@ func (conn *NetConnection) readChunk() (msg *Chunk, err error) {
 		needRead = unRead
 	}
 	mem := conn.bytePool.Get(needRead)
-	if n, err := conn.ReadFull(mem.Value); err != nil {
+	if _, err := conn.ReadFull(mem.Value); err != nil {
 		mem.Recycle()
 		return nil, err
-	} else {
-		conn.readSeqNum += uint32(n)
 	}
 	if chunk.AVData.Push(mem); chunk.AVData.ByteLength == msgLen {
 		msg = chunk
@@ -177,7 +181,6 @@ func (conn *NetConnection) readChunkStreamID(csid uint32) (chunkStreamID uint32,
 	case 0:
 		{
 			u8, err := conn.ReadByte()
-			conn.readSeqNum++
 			if err != nil {
 				return 0, err
 			}
@@ -194,7 +197,6 @@ func (conn *NetConnection) readChunkStreamID(csid uint32) (chunkStreamID uint32,
 			if err1 != nil {
 				return 0, err1
 			}
-			conn.readSeqNum += 2
 			chunkStreamID = 64 + uint32(u16_0) + (uint32(u16_1) << 8)
 		}
 	}
@@ -224,7 +226,6 @@ func (conn *NetConnection) readChunkType(h *ChunkHeader, chunkType byte) (err er
 			if h.MessageTypeID, err = conn.ReadByte(); err != nil {
 				return err
 			}
-			conn.readSeqNum++
 			if chunkType == 0 {
 				// Message Stream ID 4bytes
 				if _, err = conn.ReadFull(b4); err != nil { // 读取Message Stream ID
